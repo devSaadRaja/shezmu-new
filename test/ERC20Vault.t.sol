@@ -5,11 +5,14 @@ import "forge-std/Test.sol";
 
 import "../src/ERC20Vault.sol";
 import "../src/mock/MockERC20.sol";
+import "../src/mock/MockPriceFeed.sol";
 
 contract ERC20VaultTest is Test {
     ERC20Vault vault;
     MockERC20 collateralToken;
-    MockERC20 loanToken;
+    MockERC20 shezUSD;
+    MockPriceFeed collateralPriceFeed;
+    MockPriceFeed loanPriceFeed;
 
     address deployer = vm.addr(1);
     address user1 = vm.addr(2);
@@ -22,13 +25,19 @@ contract ERC20VaultTest is Test {
 
         // Deploy mock tokens
         collateralToken = new MockERC20("Collateral Token", "COL");
-        loanToken = new MockERC20("Loan Token", "LOAN");
+        shezUSD = new MockERC20("Shez USD", "shezUSD");
+
+        // Set up price feeds (assuming 1 COL = $200, 1 LOAN = $100)
+        collateralPriceFeed = new MockPriceFeed(200 ether, 8); // $200 with 8 decimals
+        loanPriceFeed = new MockPriceFeed(100 ether, 8); // $100 with 8 decimals
 
         // Deploy vault
         vault = new ERC20Vault(
             address(collateralToken),
-            address(loanToken),
-            INITIAL_LTV
+            address(shezUSD),
+            INITIAL_LTV,
+            address(collateralPriceFeed),
+            address(loanPriceFeed)
         );
 
         // Transfer some tokens to users
@@ -36,22 +45,25 @@ contract ERC20VaultTest is Test {
         collateralToken.transfer(user2, 2_000_000 ether);
 
         // Transfer loan tokens to vault
-        loanToken.transfer(address(vault), 2_000_000 ether);
+        shezUSD.transfer(address(vault), 2_000_000 ether);
 
         vm.stopPrank();
     }
 
     function test_InitialDeployment() public view {
         assertEq(address(vault.collateralToken()), address(collateralToken));
-        assertEq(address(vault.loanToken()), address(loanToken));
+        assertEq(address(vault.loanToken()), address(shezUSD));
         assertEq(vault.ltvRatio(), INITIAL_LTV);
     }
 
     function test_DepositAndBorrow() public {
         vm.startPrank(user1);
 
-        uint256 collateralAmount = 1000 ether;
-        uint256 loanAmount = 500 ether; // 50% of collateral
+        // uint256 collateralAmount = 1000 ether;
+        // uint256 loanAmount = 500 ether; // 50% of collateral
+
+        uint256 collateralAmount = 1000 ether; // $200,000 worth
+        uint256 loanAmount = 1000 ether; // $100,000 worth (50% LTV in value)
 
         // Approve vault to spend collateral
         collateralToken.approve(address(vault), collateralAmount);
@@ -63,7 +75,7 @@ contract ERC20VaultTest is Test {
         assertEq(vault.collateralBalances(user1), collateralAmount);
         assertEq(vault.loanBalances(user1), loanAmount);
         assertEq(collateralToken.balanceOf(address(vault)), collateralAmount);
-        assertEq(loanToken.balanceOf(user1), loanAmount);
+        assertEq(shezUSD.balanceOf(user1), loanAmount);
 
         vm.stopPrank();
     }
@@ -71,8 +83,10 @@ contract ERC20VaultTest is Test {
     function test_BorrowExceedsLTV() public {
         vm.startPrank(user1);
 
-        uint256 collateralAmount = 1000 ether;
-        uint256 loanAmount = 600 ether; // Exceeds 50% LTV
+        // uint256 collateralAmount = 1000 ether;
+        // uint256 loanAmount = 600 ether; // Exceeds 50% LTV
+        uint256 collateralAmount = 1000 ether; // $200,000 worth
+        uint256 loanAmount = 2000 ether; // $200,000 worth (100% LTV - too much)
 
         collateralToken.approve(address(vault), collateralAmount);
 
@@ -110,7 +124,8 @@ contract ERC20VaultTest is Test {
         vm.startPrank(user1);
 
         uint256 collateralAmount = 1000 ether;
-        uint256 loanAmount = 500 ether; // Max LTV
+        // uint256 loanAmount = 500 ether; // Max LTV
+        uint256 loanAmount = 1000 ether; // Max LTV
 
         collateralToken.approve(address(vault), collateralAmount);
         vault.depositCollateralAndBorrow(collateralAmount, loanAmount);
@@ -131,12 +146,12 @@ contract ERC20VaultTest is Test {
         collateralToken.approve(address(vault), collateralAmount);
         vault.depositCollateralAndBorrow(collateralAmount, loanAmount);
 
-        loanToken.approve(address(vault), repayAmount);
+        shezUSD.approve(address(vault), repayAmount);
         vault.repayLoan(repayAmount);
 
         assertEq(vault.loanBalances(user1), loanAmount - repayAmount);
         assertEq(
-            loanToken.balanceOf(address(vault)),
+            shezUSD.balanceOf(address(vault)),
             2_000_000 ether - loanAmount + repayAmount
         );
 
@@ -151,7 +166,8 @@ contract ERC20VaultTest is Test {
         vault.depositCollateralAndBorrow(collateralAmount, 100 ether);
 
         uint256 maxBorrowable = vault.getMaxBorrowable(user1);
-        assertEq(maxBorrowable, 500 ether); // 50% of 1000
+        // assertEq(maxBorrowable, 500 ether); // 50% of 1000
+        assertEq(maxBorrowable, 1000 ether); // worth 50% of collateralAmount (USD)
 
         vm.stopPrank();
     }
@@ -170,16 +186,16 @@ contract ERC20VaultTest is Test {
         uint256 amount = 1000 ether;
 
         vm.prank(vault.owner());
-        vault.emergencyWithdraw(address(loanToken), amount);
+        vault.emergencyWithdraw(address(shezUSD), amount);
 
         assertEq(
-            loanToken.balanceOf(vault.owner()),
+            shezUSD.balanceOf(vault.owner()),
             1_000_000_000 ether - 2_000_000 ether + amount
         );
 
         vm.prank(user1);
         vm.expectRevert();
-        vault.emergencyWithdraw(address(loanToken), amount);
+        vault.emergencyWithdraw(address(shezUSD), amount);
     }
 
     // Edge cases with very small/large amounts
@@ -283,8 +299,8 @@ contract ERC20VaultTest is Test {
         // First, as owner, empty vault's loan token balance
         vm.startPrank(vault.owner());
         vault.emergencyWithdraw(
-            address(loanToken),
-            loanToken.balanceOf(address(vault))
+            address(shezUSD),
+            shezUSD.balanceOf(address(vault))
         );
         vm.stopPrank();
 
@@ -305,6 +321,51 @@ contract ERC20VaultTest is Test {
         // Don't approve loan tokens for repayment
         vm.expectRevert(); // "ERC20: insufficient allowance"
         vault.repayLoan(300 ether);
+
+        vm.stopPrank();
+    }
+
+    function test_PriceChangeAffectsBorrow() public {
+        vm.startPrank(user1);
+
+        uint256 collateralAmount = 1000 ether;
+        collateralToken.approve(address(vault), collateralAmount);
+
+        // Initial borrow works
+        vault.depositCollateralAndBorrow(collateralAmount, 1000 ether);
+
+        // Drop collateral price to $100
+        collateralPriceFeed.setPrice(100 ether);
+
+        // Try to withdraw - should fail due to lower collateral value
+        vm.expectRevert("Insufficient collateral after withdrawal");
+        vault.removeCollateral(100 ether);
+
+        vm.stopPrank();
+    }
+
+    // Add price-specific tests
+    function test_InvalidPrice() public {
+        vm.startPrank(user1);
+
+        collateralPriceFeed.setPrice(0); // Invalid price
+        collateralToken.approve(address(vault), 1000 ether);
+
+        vm.expectRevert("Invalid price");
+        vault.depositCollateralAndBorrow(1000 ether, 500 ether);
+
+        vm.stopPrank();
+    }
+
+    function test_StalePrice() public {
+        vm.startPrank(user1);
+
+        // Move time forward 2 hours to make price stale
+        vm.warp(block.timestamp + 2 hours);
+        collateralToken.approve(address(vault), 1000 ether);
+
+        vm.expectRevert("Price too old");
+        vault.depositCollateralAndBorrow(1000 ether, 500 ether);
 
         vm.stopPrank();
     }

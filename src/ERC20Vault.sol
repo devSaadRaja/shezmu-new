@@ -5,12 +5,18 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
+import {IPriceFeed} from "./interfaces/IPriceFeed.sol";
+
 contract ERC20Vault is ReentrancyGuard, Ownable {
     // State variables
     IERC20 public collateralToken; // ERC20 token used as collateral
     IERC20 public loanToken; // ERC20 token used for loans
     uint256 public ltvRatio; // Loan-to-Value ratio in percentage (e.g., 50 for 50%)
     uint256 public constant PRECISION = 1e18; // For precise calculations
+
+    // Price feed oracles
+    IPriceFeed public collateralPriceFeed;
+    IPriceFeed public loanPriceFeed;
 
     // User balances and loans
     mapping(address => uint256) public collateralBalances;
@@ -29,24 +35,45 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
     constructor(
         address _collateralToken,
         address _loanToken,
-        uint256 _ltvRatio
+        uint256 _ltvRatio,
+        address _collateralPriceFeed,
+        address _loanPriceFeed
     ) Ownable(msg.sender) {
+        require(_collateralToken != address(0), "Invalid collateral token");
+        require(_loanToken != address(0), "Invalid loan token");
+        require(_ltvRatio > 0 && _ltvRatio <= 100, "Invalid LTV ratio");
         require(
-            _collateralToken != address(0),
-            "Invalid collateral token address"
+            _collateralPriceFeed != address(0),
+            "Invalid collateral price feed"
         );
-        require(_loanToken != address(0), "Invalid loan token address");
-        require(
-            _ltvRatio > 0 && _ltvRatio <= 100,
-            "LTV must be between 0 and 100"
-        );
+        require(_loanPriceFeed != address(0), "Invalid loan price feed");
 
         collateralToken = IERC20(_collateralToken);
         loanToken = IERC20(_loanToken);
         ltvRatio = _ltvRatio;
+        collateralPriceFeed = IPriceFeed(_collateralPriceFeed);
+        loanPriceFeed = IPriceFeed(_loanPriceFeed);
     }
 
-    // Deposit collateral and take a loan
+    function getPrice(IPriceFeed priceFeed) internal view returns (uint256) {
+        (, int256 price, , uint256 updatedAt, ) = priceFeed.latestRoundData();
+        require(price > 0, "Invalid price");
+        require(updatedAt > block.timestamp - 1 hours, "Price too old");
+        return uint256(price) * 10 ** (18 - priceFeed.decimals());
+    }
+
+    function getCollateralValue(
+        uint256 collateralAmount
+    ) public view returns (uint256) {
+        uint256 collateralPrice = getPrice(collateralPriceFeed);
+        return (collateralAmount * collateralPrice) / PRECISION;
+    }
+
+    function getLoanValue(uint256 loanAmount) public view returns (uint256) {
+        uint256 loanPrice = getPrice(loanPriceFeed);
+        return (loanAmount * loanPrice) / PRECISION;
+    }
+
     function depositCollateralAndBorrow(
         uint256 collateralAmount,
         uint256 loanAmount
@@ -57,12 +84,12 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         );
         require(loanAmount > 0, "Loan amount must be greater than 0");
 
-        // Calculate maximum loan amount based on collateral and LTV
-        uint256 maxLoanAmount = (collateralAmount * ltvRatio * PRECISION) /
-            (100 * PRECISION);
-        require(loanAmount <= maxLoanAmount, "Loan amount exceeds LTV limit");
+        uint256 collateralValue = getCollateralValue(collateralAmount);
+        uint256 loanValue = getLoanValue(loanAmount);
+        uint256 maxLoanValue = (collateralValue * ltvRatio) / 100;
 
-        // Transfer collateral from user to vault
+        require(loanValue <= maxLoanValue, "Loan amount exceeds LTV limit");
+
         require(
             collateralToken.transferFrom(
                 msg.sender,
@@ -72,11 +99,9 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
             "Collateral transfer failed"
         );
 
-        // Update user balances
         collateralBalances[msg.sender] += collateralAmount;
         loanBalances[msg.sender] += loanAmount;
 
-        // Transfer loan tokens to user
         require(
             loanToken.transfer(msg.sender, loanAmount),
             "Loan transfer failed"
@@ -86,29 +111,28 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         emit LoanTaken(msg.sender, collateralAmount, loanAmount);
     }
 
-    // Remove collateral (only if loan conditions are still met)
     function removeCollateral(uint256 amount) external nonReentrant {
         require(amount > 0, "Amount must be greater than 0");
         require(
             collateralBalances[msg.sender] >= amount,
-            "Insufficient collateral balance"
+            "Insufficient collateral"
         );
 
         uint256 newCollateralBalance = collateralBalances[msg.sender] - amount;
         uint256 currentLoan = loanBalances[msg.sender];
 
-        // Check if remaining collateral supports the current loan
         if (currentLoan > 0) {
-            uint256 maxLoanAllowed = (newCollateralBalance *
-                ltvRatio *
-                PRECISION) / (100 * PRECISION);
+            uint256 remainingCollateralValue = getCollateralValue(
+                newCollateralBalance
+            );
+            uint256 loanValue = getLoanValue(currentLoan);
+            uint256 minCollateralValue = (loanValue * 100) / ltvRatio;
             require(
-                maxLoanAllowed >= currentLoan,
+                remainingCollateralValue >= minCollateralValue,
                 "Insufficient collateral after withdrawal"
             );
         }
 
-        // Update balance and transfer collateral back
         collateralBalances[msg.sender] = newCollateralBalance;
 
         require(
@@ -119,31 +143,36 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         emit WithdrawnCollateral(msg.sender, amount);
     }
 
-    // Repay loan (optional function for completeness)
     function repayLoan(uint256 amount) external nonReentrant {
         require(amount > 0, "Amount must be greater than 0");
-        require(
-            loanBalances[msg.sender] >= amount,
-            "Amount exceeds loan balance"
-        );
+        require(loanBalances[msg.sender] >= amount, "Amount exceeds loan");
 
-        // Transfer loan tokens from user to vault
         require(
             loanToken.transferFrom(msg.sender, address(this), amount),
-            "Repayment transfer failed"
+            "Repayment failed"
         );
 
-        // Update loan balance
         loanBalances[msg.sender] -= amount;
 
         emit LoanRepaid(msg.sender, amount);
     }
 
-    // View function to check maximum borrowable amount
     function getMaxBorrowable(address user) public view returns (uint256) {
-        return
-            (collateralBalances[user] * ltvRatio * PRECISION) /
-            (100 * PRECISION);
+        uint256 collateralValue = getCollateralValue(collateralBalances[user]);
+        uint256 maxLoanValue = (collateralValue * ltvRatio) / 100;
+        uint256 loanPrice = getPrice(loanPriceFeed);
+        return (maxLoanValue * PRECISION) / loanPrice;
+    }
+
+    // Owner functions
+    function updatePriceFeeds(
+        address _collateralFeed,
+        address _loanFeed
+    ) external onlyOwner {
+        require(_collateralFeed != address(0), "Invalid collateral feed");
+        require(_loanFeed != address(0), "Invalid loan feed");
+        collateralPriceFeed = IPriceFeed(_collateralFeed);
+        loanPriceFeed = IPriceFeed(_loanFeed);
     }
 
     // Emergency functions for owner
