@@ -29,6 +29,9 @@ contract ERC20VaultInvariantTest is Test {
 
     uint256 constant INITIAL_LTV = 50;
 
+    mapping(uint256 => uint256) public initialCollateral; // positionId => initial amount
+    mapping(uint256 => uint256) public addedCollateral; // positionId => total added
+
     // ============================================ //
     // ================== ERRORS ================== //
     // ============================================ //
@@ -74,7 +77,7 @@ contract ERC20VaultInvariantTest is Test {
         WETH.transfer(user1, 2_000_000 ether);
         WETH.transfer(user2, 2_000_000 ether);
 
-        shezUSD.setVault(address(vault));
+        shezUSD.grantRole(keccak256("MINTER_ROLE"), address(vault));
 
         vm.stopPrank();
 
@@ -85,9 +88,10 @@ contract ERC20VaultInvariantTest is Test {
         // // Specify the openPosition function as a target selector
         FuzzSelector memory selectorTest = FuzzSelector({
             addr: address(this),
-            selectors: new bytes4[](1)
+            selectors: new bytes4[](2)
         });
         selectorTest.selectors[0] = this.handler_openPosition.selector;
+        selectorTest.selectors[1] = this.handler_addCollateral.selector;
         targetSelector(selectorTest);
         // FuzzSelector memory selectorVault = FuzzSelector({
         //     addr: address(vault),
@@ -106,13 +110,30 @@ contract ERC20VaultInvariantTest is Test {
         uint256 debtAmount
     ) public virtual {
         vm.startPrank(user1);
-
         collateralAmount = bound(collateralAmount, 1 ether, 1e23); // $200 to $10M
-        debtAmount = bound(debtAmount, 0.5 ether, collateralAmount / 2); // Within 50% LTV
-
+        debtAmount = bound(debtAmount, 0.5 ether, 1e24); // Allow exceeding LTV 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(address(WETH), collateralAmount, debtAmount);
+        try vault.openPosition(address(WETH), collateralAmount, debtAmount) {
+            uint256 positionId = vault.nextPositionId() - 1; // Last created position
+            initialCollateral[positionId] = collateralAmount; // Record initial collateral
+        } catch {}
+        vm.stopPrank();
+    }
 
+    function handler_addCollateral(
+        uint256 positionId,
+        uint256 additionalAmount
+    ) public virtual {
+        vm.startPrank(user1);
+        additionalAmount = bound(additionalAmount, 1 ether, 1e23); // $200 to $10M
+        uint256 nextId = vault.nextPositionId();
+        if (nextId > 1) {
+            positionId = bound(positionId, 1, nextId - 1);
+            WETH.approve(address(vault), additionalAmount);
+            try vault.addCollateral(positionId, additionalAmount) {
+                addedCollateral[positionId] += additionalAmount; // Record added collateral
+            } catch {}
+        }
         vm.stopPrank();
     }
 
@@ -136,39 +157,46 @@ contract ERC20VaultInvariantTest is Test {
         assertEq(shezUSD.balanceOf(user1), vault.getLoanBalance(user1));
     }
 
-    // function test_BorrowExceedsLTV() public {
-    //     vm.startPrank(user1);
+    function invariant_LTVLimitRespected() public view {
+        uint256[] memory posIds = vault.getUserPositionIds(user1);
+        for (uint256 i = 0; i < posIds.length; i++) {
+            (, uint256 collateralAmount, uint256 debtAmount) = vault
+                .getPosition(posIds[i]);
+            if (debtAmount > 0) {
+                // Only check positions with debt
+                uint256 collateralValue = vault.getCollateralValue(
+                    collateralAmount
+                );
+                uint256 loanValue = vault.getLoanValue(debtAmount);
+                uint256 maxLoanValue = (collateralValue * INITIAL_LTV) / 100;
+                assertLe(loanValue, maxLoanValue, "Debt exceeds LTV limit");
+            }
+        }
+    }
 
-    //     uint256 collateralAmount = 1000 ether; // $200,000 worth
-    //     uint256 debtAmount = 2000 ether; // $200,000 worth (100% LTV)
+    function invariant_CollateralAdditionsAccurate() public view {
+        uint256[] memory posIds = vault.getUserPositionIds(user1);
+        uint256 totalCollateralExpected;
 
-    //     WETH.approve(address(vault), collateralAmount);
-    //     vm.expectRevert(LoanExceedsLTVLimit.selector);
-    //     vault.openPosition(address(WETH), collateralAmount, debtAmount);
+        for (uint256 i = 0; i < posIds.length; i++) {
+            uint256 positionId = posIds[i];
+            (, uint256 posCollateral, ) = vault.getPosition(positionId);
+            uint256 expectedCollateral = initialCollateral[positionId] +
+                addedCollateral[positionId];
+            assertEq(
+                posCollateral,
+                expectedCollateral,
+                "Position collateral mismatch"
+            );
+            totalCollateralExpected += expectedCollateral;
+        }
 
-    //     vm.stopPrank();
-    // }
-
-    // function test_AddCollateral() public {
-    //     vm.startPrank(user1);
-
-    //     uint256 collateralAmount = 1000 ether;
-    //     uint256 debtAmount = 500 ether;
-    //     uint256 additionalAmount = 200 ether;
-
-    //     WETH.approve(address(vault), collateralAmount + additionalAmount);
-    //     vault.openPosition(address(WETH), collateralAmount, debtAmount);
-    //     vault.addCollateral(1, additionalAmount);
-
-    //     (, uint256 posCollateral, ) = vault.getPosition(1);
-    //     assertEq(posCollateral, collateralAmount + additionalAmount);
-    //     assertEq(
-    //         vault.getCollateralBalance(user1),
-    //         collateralAmount + additionalAmount
-    //     );
-
-    //     vm.stopPrank();
-    // }
+        assertEq(
+            vault.getCollateralBalance(user1),
+            totalCollateralExpected,
+            "Total collateral balance mismatch"
+        );
+    }
 
     // function test_WithdrawCollateralSuccess() public {
     //     vm.startPrank(user1);

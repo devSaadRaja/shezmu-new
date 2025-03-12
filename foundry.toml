@@ -4,8 +4,8 @@ out = "out"
 libs = ["lib"]
 
 [invariant]
-runs = 256 # 500
-depth = 10 # 20
+runs = 256
+depth = 15
 show_metrics = true
 fail_on_revert = true
 

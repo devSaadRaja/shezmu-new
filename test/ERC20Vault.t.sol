@@ -74,7 +74,7 @@ contract ERC20VaultTest is Test {
         WETH.transfer(user1, 2_000_000 ether);
         WETH.transfer(user2, 2_000_000 ether);
 
-        shezUSD.setVault(address(vault));
+        shezUSD.grantRole(keccak256("MINTER_ROLE"), address(vault));
 
         vm.stopPrank();
     }
