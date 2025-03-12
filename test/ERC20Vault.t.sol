@@ -42,15 +42,12 @@ contract ERC20VaultTest is Test {
     error ZeroLoanAmount();
     error LoanExceedsLTVLimit();
     error CollateralTransferFailed();
-    error LoanTransferFailed();
     error NotPositionOwner();
     error AmountExceedsLoan();
-    error RepaymentFailed();
     error InsufficientCollateral();
     error InsufficientCollateralAfterWithdrawal();
     error CollateralWithdrawalFailed();
     error InvalidPrice();
-    error StalePrice();
 
     // =========================================== //
     // ================== SETUP ================== //

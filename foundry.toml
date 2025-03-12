@@ -3,6 +3,12 @@ src = "src"
 out = "out"
 libs = ["lib"]
 
+[invariant]
+runs = 256 # 500
+depth = 10 # 20
+show_metrics = true
+fail_on_revert = true
+
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
 
 remappings = [
