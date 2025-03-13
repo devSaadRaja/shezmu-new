@@ -648,4 +648,20 @@ contract ERC20VaultTest is Test {
         vault.emergencyWithdraw(address(WETH), collateralAmount);
         vm.stopPrank();
     }
+
+    function test_OpenPositionTransferFromFail() public {
+        vm.startPrank(user1);
+        uint256 collateralAmount = 1000 ether;
+        uint256 debtAmount = 500 ether;
+
+        WETH.approve(address(vault), collateralAmount);
+        vm.mockCall(
+            address(WETH),
+            abi.encodeWithSelector(WETH.transferFrom.selector),
+            abi.encode(false)
+        );
+        vm.expectRevert(ERC20Vault.CollateralTransferFailed.selector);
+        vault.openPosition(address(WETH), collateralAmount, debtAmount);
+        vm.stopPrank();
+    }
 }
