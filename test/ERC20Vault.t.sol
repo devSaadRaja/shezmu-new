@@ -3,6 +3,9 @@ pragma solidity ^0.8.19;
 
 import "forge-std/Test.sol";
 
+import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
+import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
+
 import "../src/ERC20Vault.sol";
 import "../src/mock/MockERC20.sol";
 import "../src/mock/MockERC20Mintable.sol";
@@ -29,26 +32,6 @@ contract ERC20VaultTest is Test {
 
     uint256 constant INITIAL_LTV = 50;
 
-    // ============================================ //
-    // ================== ERRORS ================== //
-    // ============================================ //
-
-    error InvalidCollateralToken();
-    error InvalidLoanToken();
-    error InvalidLTVRatio();
-    error InvalidCollateralPriceFeed();
-    error InvalidLoanPriceFeed();
-    error ZeroCollateralAmount();
-    error ZeroLoanAmount();
-    error LoanExceedsLTVLimit();
-    error CollateralTransferFailed();
-    error NotPositionOwner();
-    error AmountExceedsLoan();
-    error InsufficientCollateral();
-    error InsufficientCollateralAfterWithdrawal();
-    error CollateralWithdrawalFailed();
-    error InvalidPrice();
-
     // =========================================== //
     // ================== SETUP ================== //
     // =========================================== //
@@ -60,8 +43,8 @@ contract ERC20VaultTest is Test {
         shezUSD = new MockERC20Mintable("Shez USD", "shezUSD");
 
         // wethPriceFeed = IPriceFeed(0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419);
-        wethPriceFeed = new MockPriceFeed(200 ether, 8); // $200
-        shezUSDPriceFeed = new MockPriceFeed(100 ether, 8); // $100
+        wethPriceFeed = new MockPriceFeed(200 * 10 ** 8, 8); // $200
+        shezUSDPriceFeed = new MockPriceFeed(100 * 10 ** 8, 8); // $100
 
         vault = new ERC20Vault(
             address(WETH),
@@ -75,6 +58,7 @@ contract ERC20VaultTest is Test {
         WETH.transfer(user2, 2_000_000 ether);
 
         shezUSD.grantRole(keccak256("MINTER_ROLE"), address(vault));
+        shezUSD.grantRole(keccak256("BURNER_ROLE"), address(vault));
 
         vm.stopPrank();
     }
@@ -115,7 +99,7 @@ contract ERC20VaultTest is Test {
         uint256 debtAmount = 2000 ether; // $200,000 worth (100% LTV)
 
         WETH.approve(address(vault), collateralAmount);
-        vm.expectRevert(LoanExceedsLTVLimit.selector);
+        vm.expectRevert(ERC20Vault.LoanExceedsLTVLimit.selector);
         vault.openPosition(address(WETH), collateralAmount, debtAmount);
 
         vm.stopPrank();
@@ -172,7 +156,9 @@ contract ERC20VaultTest is Test {
         WETH.approve(address(vault), collateralAmount);
         vault.openPosition(address(WETH), collateralAmount, debtAmount);
 
-        vm.expectRevert(InsufficientCollateralAfterWithdrawal.selector);
+        vm.expectRevert(
+            ERC20Vault.InsufficientCollateralAfterWithdrawal.selector
+        );
         vault.withdrawCollateral(1, 200 ether);
 
         vm.stopPrank();
@@ -270,14 +256,14 @@ contract ERC20VaultTest is Test {
 
         WETH.approve(address(vault), 1000 ether);
 
-        vm.expectRevert(ZeroCollateralAmount.selector);
+        vm.expectRevert(ERC20Vault.ZeroCollateralAmount.selector);
         vault.openPosition(address(WETH), 0, 500 ether);
 
-        vm.expectRevert(ZeroLoanAmount.selector);
+        vm.expectRevert(ERC20Vault.ZeroLoanAmount.selector);
         vault.openPosition(address(WETH), 1000 ether, 0);
 
         vault.openPosition(address(WETH), 1000 ether, 500 ether);
-        vm.expectRevert(ZeroCollateralAmount.selector);
+        vm.expectRevert(ERC20Vault.ZeroCollateralAmount.selector);
         vault.withdrawCollateral(1, 0);
 
         vm.stopPrank();
@@ -290,11 +276,13 @@ contract ERC20VaultTest is Test {
         WETH.approve(address(vault), collateralAmount);
         vault.openPosition(address(WETH), collateralAmount, 1000 ether);
 
-        wethPriceFeed.setPrice(100 ether); // Drop to $100
+        wethPriceFeed.setPrice(100 * 10 ** 8); // Drop to $100
         uint256 health = vault.getPositionHealth(1);
         assertEq(health, 1 ether); // 100,000 / 100,000 = 1
 
-        vm.expectRevert(InsufficientCollateralAfterWithdrawal.selector);
+        vm.expectRevert(
+            ERC20Vault.InsufficientCollateralAfterWithdrawal.selector
+        );
         vault.withdrawCollateral(1, 100 ether);
 
         vm.stopPrank();
@@ -305,7 +293,7 @@ contract ERC20VaultTest is Test {
 
         wethPriceFeed.setPrice(0);
         WETH.approve(address(vault), 1000 ether);
-        vm.expectRevert(InvalidPrice.selector);
+        vm.expectRevert(ERC20Vault.InvalidPrice.selector);
         vault.openPosition(address(WETH), 1000 ether, 500 ether);
 
         vm.stopPrank();
@@ -367,13 +355,13 @@ contract ERC20VaultTest is Test {
         vm.stopPrank();
 
         vm.startPrank(user2);
-        vm.expectRevert(NotPositionOwner.selector);
+        vm.expectRevert(ERC20Vault.NotPositionOwner.selector);
         vault.addCollateral(1, 100 ether);
 
-        vm.expectRevert(NotPositionOwner.selector);
+        vm.expectRevert(ERC20Vault.NotPositionOwner.selector);
         vault.withdrawCollateral(1, 100 ether);
 
-        vm.expectRevert(NotPositionOwner.selector);
+        vm.expectRevert(ERC20Vault.NotPositionOwner.selector);
         vault.repayDebt(1, 100 ether);
         vm.stopPrank();
     }
@@ -382,7 +370,7 @@ contract ERC20VaultTest is Test {
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
 
-        vm.expectRevert(InvalidCollateralToken.selector);
+        vm.expectRevert(ERC20Vault.InvalidCollateralToken.selector);
         vault.openPosition(address(shezUSD), 1000 ether, 500 ether);
 
         vm.stopPrank();
@@ -437,10 +425,12 @@ contract ERC20VaultTest is Test {
 
         assertEq(vault.getPositionHealth(1), 2 ether);
 
-        wethPriceFeed.setPrice(150 ether);
+        wethPriceFeed.setPrice(150 * 10 ** 8);
         assertEq(vault.getPositionHealth(1), 1.5 ether);
 
-        vm.expectRevert(InsufficientCollateralAfterWithdrawal.selector);
+        vm.expectRevert(
+            ERC20Vault.InsufficientCollateralAfterWithdrawal.selector
+        );
         vault.withdrawCollateral(1, 1 ether);
 
         vm.stopPrank();
@@ -458,6 +448,204 @@ contract ERC20VaultTest is Test {
         assertEq(positionIds[0], 1);
         assertEq(positionIds[1], 2);
 
+        vm.stopPrank();
+    }
+
+    function test_EmergencyWithdraw() public {
+        vm.startPrank(deployer);
+        uint256 collateralAmount = 1000 ether;
+
+        // Store deployer's balance before the emergency transfer
+        uint256 balanceBefore = WETH.balanceOf(deployer);
+
+        // Transfer to vault and withdraw
+        WETH.transfer(address(vault), collateralAmount);
+        vault.emergencyWithdraw(address(WETH), collateralAmount);
+
+        // Verify exact balance after withdrawal
+        assertEq(WETH.balanceOf(deployer), balanceBefore);
+        vm.stopPrank();
+
+        vm.startPrank(user1);
+        vm.expectRevert();
+        vault.emergencyWithdraw(address(WETH), 1 ether);
+        vm.stopPrank();
+    }
+
+    function test_UpdatePriceFeeds() public {
+        vm.startPrank(deployer);
+        MockPriceFeed newWETHPriceFeed = new MockPriceFeed(250 ether, 8);
+        MockPriceFeed newShezUSDPriceFeed = new MockPriceFeed(120 ether, 8);
+        vault.updatePriceFeeds(
+            address(newWETHPriceFeed),
+            address(newShezUSDPriceFeed)
+        );
+        assertEq(
+            address(vault.collateralPriceFeed()),
+            address(newWETHPriceFeed)
+        );
+        assertEq(address(vault.loanPriceFeed()), address(newShezUSDPriceFeed));
+        vm.stopPrank();
+
+        vm.startPrank(user1);
+        vm.expectRevert();
+        vault.updatePriceFeeds(
+            address(newWETHPriceFeed),
+            address(newShezUSDPriceFeed)
+        );
+        vm.stopPrank();
+    }
+
+    function test_UpdateLtvRatio() public {
+        vm.startPrank(deployer);
+        vault.updateLtvRatio(60);
+        assertEq(vault.ltvRatio(), 60);
+        vm.stopPrank();
+
+        vm.startPrank(user1);
+        vm.expectRevert();
+        vault.updateLtvRatio(60);
+        vm.stopPrank();
+    }
+
+    function test_WithdrawCollateralTransferFail() public {
+        vm.startPrank(user1);
+        uint256 collateralAmount = 1000 ether;
+        uint256 debtAmount = 500 ether;
+        WETH.approve(address(vault), collateralAmount);
+        vault.openPosition(address(WETH), collateralAmount, debtAmount);
+        vm.mockCall(
+            address(WETH),
+            abi.encodeWithSelector(WETH.transfer.selector),
+            abi.encode(false)
+        );
+        vm.expectRevert(ERC20Vault.CollateralWithdrawalFailed.selector);
+        vault.withdrawCollateral(1, 200 ether);
+        vm.stopPrank();
+    }
+
+    function test_AddCollateralZeroAmount() public {
+        vm.startPrank(user1);
+        uint256 collateralAmount = 1000 ether;
+        uint256 debtAmount = 500 ether;
+        WETH.approve(address(vault), collateralAmount);
+        vault.openPosition(address(WETH), collateralAmount, debtAmount);
+        vm.expectRevert(ERC20Vault.ZeroCollateralAmount.selector);
+        vault.addCollateral(1, 0);
+        vm.stopPrank();
+    }
+
+    function test_ConstructorInvalidInputs() public {
+        vm.startPrank(deployer);
+        vm.expectRevert(ERC20Vault.InvalidCollateralToken.selector);
+        new ERC20Vault(
+            address(0),
+            address(shezUSD),
+            INITIAL_LTV,
+            address(wethPriceFeed),
+            address(shezUSDPriceFeed)
+        );
+
+        vm.expectRevert(ERC20Vault.InvalidLoanToken.selector);
+        new ERC20Vault(
+            address(WETH),
+            address(0),
+            INITIAL_LTV,
+            address(wethPriceFeed),
+            address(shezUSDPriceFeed)
+        );
+
+        vm.expectRevert(ERC20Vault.InvalidCollateralPriceFeed.selector);
+        new ERC20Vault(
+            address(WETH),
+            address(shezUSD),
+            INITIAL_LTV,
+            address(0),
+            address(shezUSDPriceFeed)
+        );
+
+        vm.expectRevert(ERC20Vault.InvalidLoanPriceFeed.selector);
+        new ERC20Vault(
+            address(WETH),
+            address(shezUSD),
+            INITIAL_LTV,
+            address(wethPriceFeed),
+            address(0)
+        );
+        vm.stopPrank();
+    }
+
+    function test_GetCollateralValue() public view {
+        uint256 collateralAmount = 1000 ether; // $200,000 at $200 per token
+        uint256 collateralValue = vault.getCollateralValue(collateralAmount);
+        assertEq(collateralValue, 200_000 ether); // 1000 * 200
+    }
+
+    function test_GetLoanValue() public view {
+        uint256 loanAmount = 1000 ether; // $100,000 at $100 per token
+        uint256 loanValue = vault.getLoanValue(loanAmount);
+        assertEq(loanValue, 100_000 ether); // 1000 * 100
+    }
+
+    function test_WithdrawCollateralFailInsufficientCollateral() public {
+        vm.startPrank(user1);
+        uint256 collateralAmount = 1000 ether;
+        uint256 debtAmount = 500 ether;
+        uint256 withdrawAmount = 2000 ether; // More than deposited
+
+        WETH.approve(address(vault), collateralAmount);
+        vault.openPosition(address(WETH), collateralAmount, debtAmount);
+        vm.expectRevert(ERC20Vault.InsufficientCollateral.selector);
+        vault.withdrawCollateral(1, withdrawAmount);
+        vm.stopPrank();
+    }
+
+    function test_RepayDebtBurnFailNoPermission() public {
+        vm.startPrank(user1);
+        uint256 collateralAmount = 1000 ether;
+        uint256 debtAmount = 500 ether;
+        uint256 repayAmount = 300 ether;
+        WETH.approve(address(vault), collateralAmount);
+        vault.openPosition(address(WETH), collateralAmount, debtAmount);
+        vm.stopPrank();
+
+        vm.startPrank(deployer);
+        shezUSD.revokeRole(keccak256("BURNER_ROLE"), address(vault));
+        vm.stopPrank();
+
+        vm.startPrank(user1);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                address(vault),
+                keccak256("BURNER_ROLE")
+            )
+        );
+        vault.repayDebt(1, repayAmount);
+        vm.stopPrank();
+    }
+
+    function test_UpdateLtvRatioInvalid() public {
+        vm.startPrank(deployer);
+        vm.expectRevert(ERC20Vault.InvalidLTVRatio.selector);
+        vault.updateLtvRatio(0);
+
+        vm.expectRevert(ERC20Vault.InvalidLTVRatio.selector);
+        vault.updateLtvRatio(101);
+        vm.stopPrank();
+    }
+
+    function test_EmergencyWithdrawTransferFail() public {
+        vm.startPrank(deployer);
+        uint256 collateralAmount = 1000 ether;
+        WETH.transfer(address(vault), collateralAmount);
+        vm.mockCall(
+            address(WETH),
+            abi.encodeWithSelector(WETH.transfer.selector),
+            abi.encode(false)
+        );
+        vm.expectRevert(ERC20Vault.EmergencyWithdrawFailed.selector);
+        vault.emergencyWithdraw(address(WETH), collateralAmount);
         vm.stopPrank();
     }
 }

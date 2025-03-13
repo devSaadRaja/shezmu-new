@@ -6,6 +6,7 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract MockERC20Mintable is ERC20, AccessControl {
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
+    bytes32 public constant BURNER_ROLE = keccak256("BURNER_ROLE");
 
     constructor(string memory name, string memory symbol) ERC20(name, symbol) {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
@@ -21,7 +22,7 @@ contract MockERC20Mintable is ERC20, AccessControl {
     function burn(
         address account,
         uint256 value
-    ) external onlyRole(MINTER_ROLE) {
+    ) external onlyRole(BURNER_ROLE) {
         _burn(account, value);
     }
 }

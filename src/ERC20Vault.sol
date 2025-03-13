@@ -72,6 +72,7 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
     error InsufficientCollateralAfterWithdrawal();
     error CollateralWithdrawalFailed();
     error InvalidPrice();
+    error EmergencyWithdrawFailed();
 
     // ================================================= //
     // ================== CONSTRUCTOR ================== //
@@ -357,7 +358,8 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         address token,
         uint256 amount
     ) external onlyOwner {
-        IERC20(token).transfer(msg.sender, amount);
+        bool success = IERC20(token).transfer(msg.sender, amount);
+        if (!success) revert EmergencyWithdrawFailed();
     }
 
     // ======================================================== //
