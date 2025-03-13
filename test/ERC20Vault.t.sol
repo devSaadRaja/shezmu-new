@@ -3,6 +3,7 @@ pragma solidity ^0.8.19;
 
 import "forge-std/Test.sol";
 
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 
@@ -266,6 +267,9 @@ contract ERC20VaultTest is Test {
         vm.expectRevert(ERC20Vault.ZeroCollateralAmount.selector);
         vault.withdrawCollateral(1, 0);
 
+        vm.expectRevert(ERC20Vault.ZeroLoanAmount.selector);
+        vault.repayDebt(1, 0);
+
         vm.stopPrank();
     }
 
@@ -292,6 +296,17 @@ contract ERC20VaultTest is Test {
         vm.startPrank(user1);
 
         wethPriceFeed.setPrice(0);
+        WETH.approve(address(vault), 1000 ether);
+        vm.expectRevert(ERC20Vault.InvalidPrice.selector);
+        vault.openPosition(address(WETH), 1000 ether, 500 ether);
+
+        vm.stopPrank();
+    }
+
+    function test_NegativePriceEdgeCase() public {
+        vm.startPrank(user1);
+
+        wethPriceFeed.setPrice(-1 * 10 ** 8);
         WETH.approve(address(vault), 1000 ether);
         vm.expectRevert(ERC20Vault.InvalidPrice.selector);
         vault.openPosition(address(WETH), 1000 ether, 500 ether);
@@ -488,11 +503,31 @@ contract ERC20VaultTest is Test {
         vm.stopPrank();
 
         vm.startPrank(user1);
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Ownable.OwnableUnauthorizedAccount.selector,
+                user1
+            )
+        );
         vault.updatePriceFeeds(
             address(newWETHPriceFeed),
             address(newShezUSDPriceFeed)
         );
+        vm.stopPrank();
+    }
+
+    function test_UpdatePriceFeedsInvalid() public {
+        vm.startPrank(deployer);
+
+        MockPriceFeed newWETHPriceFeed = new MockPriceFeed(250 ether, 8);
+        MockPriceFeed newShezUSDPriceFeed = new MockPriceFeed(120 ether, 8);
+
+        vm.expectRevert(ERC20Vault.InvalidLoanPriceFeed.selector);
+        vault.updatePriceFeeds(address(newWETHPriceFeed), address(0));
+
+        vm.expectRevert(ERC20Vault.InvalidCollateralPriceFeed.selector);
+        vault.updatePriceFeeds(address(0), address(newShezUSDPriceFeed));
+
         vm.stopPrank();
     }
 
@@ -662,6 +697,64 @@ contract ERC20VaultTest is Test {
         );
         vm.expectRevert(ERC20Vault.CollateralTransferFailed.selector);
         vault.openPosition(address(WETH), collateralAmount, debtAmount);
+        vm.stopPrank();
+    }
+
+    function test_RepayDebtExceedsLoan() public {
+        vm.startPrank(user1);
+        uint256 collateralAmount = 1000 ether;
+        uint256 debtAmount = 500 ether;
+        uint256 repayAmount = 600 ether; // Exceeds the debt amount
+
+        WETH.approve(address(vault), collateralAmount);
+        vault.openPosition(address(WETH), collateralAmount, debtAmount);
+
+        vm.expectRevert(ERC20Vault.AmountExceedsLoan.selector);
+        vault.repayDebt(1, repayAmount);
+        vm.stopPrank();
+    }
+
+    function test_AddCollateralTransferFromFail() public {
+        vm.startPrank(user1);
+        uint256 collateralAmount = 1000 ether;
+        uint256 initialDebt = 500 ether;
+        uint256 addAmount = 200 ether;
+
+        // Open a position to get a valid positionId
+        WETH.approve(address(vault), collateralAmount);
+        vault.openPosition(address(WETH), collateralAmount, initialDebt);
+
+        // Approve the vault for the additional amount
+        WETH.approve(address(vault), addAmount);
+
+        // Mock the transferFrom call to fail
+        vm.mockCall(
+            address(WETH),
+            abi.encodeWithSelector(
+                WETH.transferFrom.selector,
+                user1,
+                address(vault),
+                addAmount
+            ),
+            abi.encode(false)
+        );
+
+        vm.expectRevert(ERC20Vault.CollateralTransferFailed.selector);
+        vault.addCollateral(1, addAmount); // Use positionId 1
+        vm.stopPrank();
+    }
+
+    function test_UpdatePriceFeedsZeroAddress() public {
+        vm.startPrank(deployer);
+        MockPriceFeed newWETHPriceFeed = new MockPriceFeed(250 * 10 ** 8, 8);
+
+        // Test _collateralFeed == address(0)
+        vm.expectRevert(ERC20Vault.InvalidCollateralPriceFeed.selector);
+        vault.updatePriceFeeds(address(0), address(newWETHPriceFeed));
+
+        // Test _loanFeed == address(0)
+        vm.expectRevert(ERC20Vault.InvalidLoanPriceFeed.selector);
+        vault.updatePriceFeeds(address(newWETHPriceFeed), address(0));
         vm.stopPrank();
     }
 }
