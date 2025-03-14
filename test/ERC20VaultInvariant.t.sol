@@ -385,4 +385,72 @@ contract ERC20VaultInvariantTest is Test {
             "Vault collateral mismatch"
         );
     }
+
+    function invariant_DebtRepaymentsAccurate() public view {
+        uint256[] memory posIds = vault.getUserPositionIds(user1);
+        uint256 totalDebtExpected;
+
+        for (uint256 i = 0; i < posIds.length; i++) {
+            uint256 positionId = posIds[i];
+            (, , uint256 posDebt) = vault.getPosition(positionId);
+            uint256 expectedDebt = initialDebt[positionId] -
+                repaidDebt[positionId];
+            assertEq(posDebt, expectedDebt, "Position debt mismatch");
+            totalDebtExpected += expectedDebt;
+        }
+
+        assertEq(
+            vault.getLoanBalance(user1),
+            totalDebtExpected,
+            "Total debt balance mismatch"
+        );
+        assertEq(
+            shezUSD.balanceOf(user1),
+            totalDebtExpected,
+            "shezUSD balance mismatch"
+        );
+    }
+
+    function invariant_HealthRatioCorrect() public view {
+        uint256[] memory posIds = vault.getUserPositionIds(user1);
+        for (uint256 i = 0; i < posIds.length; i++) {
+            uint256 positionId = posIds[i];
+            (, uint256 collateralAmount, uint256 debtAmount) = vault
+                .getPosition(positionId);
+            uint256 health = vault.getPositionHealth(positionId);
+
+            if (debtAmount == 0) {
+                assertEq(
+                    health,
+                    type(uint256).max,
+                    "Health should be infinity for zero debt"
+                );
+            } else {
+                uint256 collateralValue = vault.getCollateralValue(
+                    collateralAmount
+                );
+                uint256 loanValue = vault.getLoanValue(debtAmount);
+                uint256 expectedHealth = (collateralValue * 1 ether) /
+                    loanValue; // Scaled to match vault precision
+                assertApproxEqAbs(
+                    health,
+                    expectedHealth,
+                    1e12,
+                    "Health ratio mismatch"
+                ); // Allow small precision errors
+            }
+        }
+
+        // Check health for non-existent positions
+        uint256 nextId = vault.nextPositionId();
+        if (nextId > 0) {
+            uint256 nonExistentId = nextId;
+            uint256 healthNonExistent = vault.getPositionHealth(nonExistentId);
+            assertEq(
+                healthNonExistent,
+                type(uint256).max,
+                "Health should be infinity for non-existent position"
+            );
+        }
+    }
 }
