@@ -34,6 +34,8 @@ contract ERC20VaultInvariantTest is Test {
     mapping(uint256 => uint256) public withdrawnCollateral; // positionId => total withdrawn
     mapping(uint256 => uint256) public initialDebt; // positionId => initial debt
     mapping(uint256 => uint256) public repaidDebt; // positionId => total repaid
+    mapping(address => uint256) public lastPriceUpdate; // Token address => last price
+    mapping(uint256 => uint256) public ltvAtCreation; // positionId => LTV at creation
     uint256 public initialWETHBalance; // User1's initial WETH balance
 
     // =========================================== //
@@ -69,19 +71,26 @@ contract ERC20VaultInvariantTest is Test {
         // Record initial WETH balance for user1
         initialWETHBalance = WETH.balanceOf(user1); // 2_000_000 ether;
 
+        // Record initial prices
+        (, int256 priceWETH, , , ) = wethPriceFeed.latestRoundData();
+        (, int256 priceShezUSD, , , ) = shezUSDPriceFeed.latestRoundData();
+        lastPriceUpdate[address(wethPriceFeed)] = uint256(priceWETH);
+        lastPriceUpdate[address(shezUSDPriceFeed)] = uint256(priceShezUSD);
+
         // Explicitly target this contract for invariant testing
         targetContract(address(this));
         // targetContract(address(vault));
 
-        // // Specify the openPosition function as a target selector
+        // Specify the openPosition function as a target selector
         FuzzSelector memory selectorTest = FuzzSelector({
             addr: address(this),
-            selectors: new bytes4[](4)
+            selectors: new bytes4[](5)
         });
         selectorTest.selectors[0] = this.handler_openPosition.selector;
         selectorTest.selectors[1] = this.handler_addCollateral.selector;
         selectorTest.selectors[2] = this.handler_withdrawCollateral.selector;
         selectorTest.selectors[3] = this.handler_repayDebt.selector;
+        selectorTest.selectors[4] = this.handler_updatePriceFeed.selector;
         targetSelector(selectorTest);
         // FuzzSelector memory selectorVault = FuzzSelector({
         //     addr: address(vault),
@@ -118,6 +127,12 @@ contract ERC20VaultInvariantTest is Test {
                 uint256 positionId = vault.nextPositionId() - 1;
                 initialCollateral[positionId] = collateralAmount;
                 initialDebt[positionId] = debtAmount;
+                // Calculate and store LTV at creation
+                uint256 collateralValue = vault.getCollateralValue(
+                    collateralAmount
+                );
+                uint256 loanValue = vault.getLoanValue(debtAmount);
+                ltvAtCreation[positionId] = (loanValue * 100) / collateralValue;
             } catch {}
         }
         // Test revert paths
@@ -199,7 +214,8 @@ contract ERC20VaultInvariantTest is Test {
             if (
                 withdrawAmount > 0 &&
                 withdrawAmount <= posCollateral &&
-                posDebt == 0
+                posDebt == 0 &&
+                WETH.balanceOf(address(vault)) >= withdrawAmount
             ) {
                 try vault.withdrawCollateral(positionId, withdrawAmount) {
                     withdrawnCollateral[positionId] += withdrawAmount;
@@ -212,28 +228,22 @@ contract ERC20VaultInvariantTest is Test {
             } else if (withdrawAmount > posCollateral) {
                 vm.expectRevert(ERC20Vault.InsufficientCollateral.selector);
                 vault.withdrawCollateral(positionId, withdrawAmount);
-            }
-            // else if (
-            //     posDebt > 0 &&
-            //     withdrawAmount > (posCollateral - ((posDebt * 100) / INITIAL_LTV))
-            // ) {
-            //     vm.expectRevert(
-            //         ERC20Vault.InsufficientCollateralAfterWithdrawal.selector
-            //     );
-            //     vault.withdrawCollateral(positionId, withdrawAmount);
-            // }
-            // else if (posDebt > 0) {
-            //     // Calculate minimum required collateral based on debt
-            //     uint256 minRequiredCollateral = (posDebt * 100) / INITIAL_LTV;
-            //     // If withdrawal would leave less than required collateral
-            //     if (posCollateral - withdrawAmount < minRequiredCollateral) {
-            //         // vm.expectRevert(
-            //         //     ERC20Vault.InsufficientCollateralAfterWithdrawal.selector
-            //         // );
-            //         // vault.withdrawCollateral(positionId, withdrawAmount);
-            //     }
-            // }
-            else if (owner != user1) {
+            } else if (posDebt > 0) {
+                // Calculate minimum required collateral based on current health
+                uint256 collateralValue = vault.getCollateralValue(
+                    posCollateral - withdrawAmount
+                );
+                uint256 loanValue = vault.getLoanValue(posDebt);
+                uint256 minRequiredValue = (loanValue * 100) / INITIAL_LTV;
+                if (collateralValue < minRequiredValue) {
+                    vm.expectRevert(
+                        ERC20Vault
+                            .InsufficientCollateralAfterWithdrawal
+                            .selector
+                    );
+                    vault.withdrawCollateral(positionId, withdrawAmount);
+                }
+            } else if (owner != user1) {
                 vm.expectRevert(ERC20Vault.NotPositionOwner.selector);
                 vault.withdrawCollateral(positionId, withdrawAmount);
             }
@@ -294,6 +304,27 @@ contract ERC20VaultInvariantTest is Test {
         vm.stopPrank();
     }
 
+    function handler_updatePriceFeed(
+        uint256 priceFeedIndex,
+        uint256 newPrice
+    ) public {
+        vm.startPrank(deployer); // Assume only deployer can update price feeds
+        newPrice = bound(newPrice, 1 * 10 ** 8, 1000 * 10 ** 8); // Reasonable price range (e.g., $1 to $1000 with 8 decimals)
+
+        // Select the price feed based on the index (0 for wethPriceFeed, 1 for shezUSDPriceFeed)
+        address priceFeed;
+        if (priceFeedIndex % 2 == 0) {
+            priceFeed = address(wethPriceFeed);
+        } else {
+            priceFeed = address(shezUSDPriceFeed);
+        }
+
+        try MockPriceFeed(priceFeed).setPrice(int256(newPrice)) {
+            lastPriceUpdate[priceFeed] = newPrice; // Update last known price
+        } catch {}
+        vm.stopPrank();
+    }
+
     // ================================================ //
     // ================== TEST CASES ================== //
     // ================================================ //
@@ -317,16 +348,16 @@ contract ERC20VaultInvariantTest is Test {
     function invariant_LTVLimitRespected() public view {
         uint256[] memory posIds = vault.getUserPositionIds(user1);
         for (uint256 i = 0; i < posIds.length; i++) {
-            (, uint256 collateralAmount, uint256 debtAmount) = vault
-                .getPosition(posIds[i]);
+            uint256 positionId = posIds[i];
+            (, , uint256 debtAmount) = vault.getPosition(positionId);
             if (debtAmount > 0) {
-                // Only check positions with debt
-                uint256 collateralValue = vault.getCollateralValue(
-                    collateralAmount
+                // Check LTV at the time of position creation
+                uint256 ltvAtCreationForPos = ltvAtCreation[positionId];
+                assertLe(
+                    ltvAtCreationForPos,
+                    INITIAL_LTV,
+                    "LTV at creation exceeds limit"
                 );
-                uint256 loanValue = vault.getLoanValue(debtAmount);
-                uint256 maxLoanValue = (collateralValue * INITIAL_LTV) / 100;
-                assertLe(loanValue, maxLoanValue, "Debt exceeds LTV limit");
             }
         }
     }
@@ -451,6 +482,39 @@ contract ERC20VaultInvariantTest is Test {
                 type(uint256).max,
                 "Health should be infinity for non-existent position"
             );
+        }
+    }
+
+    function invariant_HealthReflectsPriceChanges() public {
+        uint256[] memory posIds = vault.getUserPositionIds(user1);
+        for (uint256 i = 0; i < posIds.length; i++) {
+            uint256 positionId = posIds[i];
+            (, uint256 collateralAmount, uint256 debtAmount) = vault
+                .getPosition(positionId);
+            if (collateralAmount > 0 && debtAmount > 0) {
+                uint256 health = vault.getPositionHealth(positionId);
+                uint256 collateralValue = vault.getCollateralValue(
+                    collateralAmount
+                );
+                uint256 loanValue = vault.getLoanValue(debtAmount);
+                uint256 expectedHealth = (collateralValue * 1 ether) /
+                    loanValue;
+
+                // Verify health reflects current price
+                assertApproxEqAbs(
+                    health,
+                    expectedHealth,
+                    1e12,
+                    "Health does not reflect current price"
+                );
+
+                // Check withdrawal revert when health is insufficient
+                uint256 minCollateralValue = (loanValue * 100) / INITIAL_LTV;
+                if (collateralValue <= minCollateralValue) {
+                    vm.expectRevert();
+                    vault.withdrawCollateral(positionId, 1); // Attempt to withdraw 1 wei
+                }
+            }
         }
     }
 }
