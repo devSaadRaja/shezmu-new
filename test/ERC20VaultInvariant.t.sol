@@ -517,4 +517,69 @@ contract ERC20VaultInvariantTest is Test {
             }
         }
     }
+
+    function invariant_FullDebtRepayment() public view {
+        uint256[] memory posIds = vault.getUserPositionIds(user1);
+        for (uint256 i = 0; i < posIds.length; i++) {
+            uint256 positionId = posIds[i];
+            (, uint256 posCollateral, uint256 posDebt) = vault.getPosition(
+                positionId
+            );
+
+            // Check if the debt has been fully repaid
+            if (
+                initialDebt[positionId] > 0 &&
+                repaidDebt[positionId] >= initialDebt[positionId]
+            ) {
+                // Debt should be 0
+                assertEq(posDebt, 0, "Debt should be 0 after full repayment");
+
+                // Position health should be infinite
+                assertEq(
+                    vault.getPositionHealth(positionId),
+                    type(uint256).max,
+                    "Health should be infinite after full debt repayment"
+                );
+
+                // If all collateral has been withdrawn, collateral should be 0
+                uint256 expectedCollateral = initialCollateral[positionId] +
+                    addedCollateral[positionId] -
+                    withdrawnCollateral[positionId];
+                assertEq(
+                    posCollateral,
+                    expectedCollateral,
+                    "Collateral mismatch after full debt repayment"
+                );
+
+                // If collateral is fully withdrawn, it should be 0
+                if (
+                    withdrawnCollateral[positionId] >=
+                    (initialCollateral[positionId] +
+                        addedCollateral[positionId])
+                ) {
+                    assertEq(
+                        posCollateral,
+                        0,
+                        "Collateral should be 0 after full withdrawal"
+                    );
+                }
+            }
+        }
+
+        // Check total loan balance reflects fully repaid positions
+        uint256 totalDebtExpected;
+        for (uint256 i = 0; i < posIds.length; i++) {
+            uint256 positionId = posIds[i];
+            uint256 expectedDebt = initialDebt[positionId] >
+                repaidDebt[positionId]
+                ? initialDebt[positionId] - repaidDebt[positionId]
+                : 0;
+            totalDebtExpected += expectedDebt;
+        }
+        assertEq(
+            vault.getLoanBalance(user1),
+            totalDebtExpected,
+            "Loan balance mismatch after full debt repayment"
+        );
+    }
 }
