@@ -27,6 +27,9 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
     IERC20 public collateralToken;
     EERC20 public loanToken;
     uint256 public ltvRatio; // Loan-to-Value ratio in percentage (e.g., 50 for 50%)
+    uint256 public liquidationThreshold; // % of LTV ratio as liquidation threshold
+    uint256 public liquidatorReward; // 50 for 50%
+
     uint256 public constant PRECISION = 1e18; // For precise calculations
 
     IPriceFeed public collateralPriceFeed;
@@ -52,11 +55,18 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
     event CollateralAdded(uint256 indexed positionId, uint256 amount);
     event DebtRepaid(uint256 indexed positionId, uint256 amount);
     event WithdrawnCollateral(uint256 indexed positionId, uint256 amount);
+    event PositionLiquidated(
+        uint256 indexed positionId,
+        address indexed liquidator,
+        uint256 collateralSeized,
+        uint256 debtRepaid
+    );
 
     // ============================================ //
     // ================== ERRORS ================== //
     // ============================================ //
 
+    error InvalidPosition();
     error InvalidCollateralToken();
     error InvalidLoanToken();
     error InvalidLTVRatio();
@@ -73,6 +83,9 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
     error CollateralWithdrawalFailed();
     error InvalidPrice();
     error EmergencyWithdrawFailed();
+    error PositionNotLiquidatable();
+    error LiquidationFailed();
+    error InvalidLiquidator();
 
     // ================================================= //
     // ================== CONSTRUCTOR ================== //
@@ -81,6 +94,8 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         address _collateralToken,
         address _loanToken,
         uint256 _ltvRatio,
+        uint256 _liquidationThreshold,
+        uint256 _liquidatorReward,
         address _collateralPriceFeed,
         address _loanPriceFeed
     ) Ownable(msg.sender) {
@@ -94,6 +109,8 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         collateralToken = IERC20(_collateralToken);
         loanToken = EERC20(_loanToken);
         ltvRatio = _ltvRatio;
+        liquidationThreshold = _liquidationThreshold;
+        liquidatorReward = _liquidatorReward;
         collateralPriceFeed = IPriceFeed(_collateralPriceFeed);
         loanPriceFeed = IPriceFeed(_loanPriceFeed);
     }
@@ -135,7 +152,7 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
     /// @return The health factor (collateral value / debt value) * PRECISION
     function getPositionHealth(
         uint256 positionId
-    ) external view returns (uint256) {
+    ) public view returns (uint256) {
         Position memory pos = positions[positionId];
         if (pos.debtAmount == 0) return type(uint256).max;
 
@@ -325,6 +342,69 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         }
 
         emit WithdrawnCollateral(positionId, amount);
+    }
+
+    /// @notice Liquidates an undercollateralized position
+    /// @param positionId The ID of the position to liquidate
+    /// @param liquidator The address receiving the liquidation reward
+    function liquidatePosition(
+        uint256 positionId,
+        address liquidator
+    ) external nonReentrant {
+        if (liquidator == address(0)) revert InvalidLiquidator();
+        Position storage pos = positions[positionId];
+        if (pos.owner == address(0)) revert InvalidPosition();
+        if (!isLiquidatable(positionId)) revert PositionNotLiquidatable();
+
+        uint256 collateralValue = getCollateralValue(pos.collateralAmount);
+        uint256 debtValue = getLoanValue(pos.debtAmount);
+        uint256 collateralPrice = _getPrice(collateralPriceFeed);
+        uint256 loanPrice = _getPrice(loanPriceFeed);
+
+        // Calculate the debt to repay (up to the full debt amount)
+        uint256 debtToRepay = (debtValue * PRECISION) / loanPrice;
+        if (debtToRepay > pos.debtAmount) debtToRepay = pos.debtAmount;
+
+        // Calculate collateral to seize
+        uint256 totalCollateralToSeize = (collateralValue * PRECISION) /
+            collateralPrice;
+        uint256 reward = (totalCollateralToSeize * liquidatorReward) / 100;
+        uint256 debtCollateralCover = totalCollateralToSeize - reward;
+
+        // Ensure collateral covers the debt
+        if (debtCollateralCover < debtToRepay) {
+            reward = totalCollateralToSeize; // Take all collateral if insufficient
+            debtToRepay = debtCollateralCover;
+        }
+
+        // Update position and balances
+        pos.collateralAmount = 0;
+        pos.debtAmount -= debtToRepay;
+        collateralBalances[pos.owner] -= totalCollateralToSeize;
+        loanBalances[pos.owner] -= debtToRepay;
+
+        // Transfer collateral to liquidator
+        if (!collateralToken.transfer(liquidator, reward)) {
+            revert CollateralWithdrawalFailed();
+        }
+
+        // Burn the repaid loan tokens
+        loanToken.burn(pos.owner, debtToRepay);
+
+        emit PositionLiquidated(positionId, liquidator, reward, debtToRepay);
+    }
+
+    /// @notice Checks if a position is liquidatable
+    /// @param positionId The ID of the position to check
+    /// @return bool True if the position is liquidatable
+    function isLiquidatable(uint256 positionId) public view returns (bool) {
+        Position memory pos = positions[positionId];
+        if (pos.debtAmount == 0 || pos.collateralAmount == 0) return false;
+
+        uint256 health = getPositionHealth(positionId);
+        uint256 liquidationThresholdValue = (ltvRatio * liquidationThreshold) /
+            100;
+        return health < (PRECISION * liquidationThresholdValue) / 100;
     }
 
     // ===================================================== //

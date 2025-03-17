@@ -184,6 +184,8 @@ contract ERC20VaultInvariantTest is Test {
     address user2 = vm.addr(3);
 
     uint256 constant INITIAL_LTV = 50;
+    uint256 constant LIQUIDATION_THRESHOLD = 110; // 110% of INITIAL_LTV
+    uint256 constant LIQUIDATOR_REWARD = 50; // 50%
 
     mapping(uint256 => uint256) public initialCollateral; // positionId => initial amount
     mapping(uint256 => uint256) public addedCollateral; // positionId => total added
@@ -212,6 +214,8 @@ contract ERC20VaultInvariantTest is Test {
             address(WETH),
             address(shezUSD),
             INITIAL_LTV,
+            LIQUIDATION_THRESHOLD,
+            LIQUIDATOR_REWARD,
             address(wethPriceFeed),
             address(shezUSDPriceFeed)
         );
