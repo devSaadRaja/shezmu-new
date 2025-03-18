@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
+import "forge-std/Test.sol";
+
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -29,6 +31,7 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
     uint256 public ltvRatio; // Loan-to-Value ratio in percentage (e.g., 50 for 50%)
     uint256 public liquidationThreshold; // % of LTV ratio as liquidation threshold
     uint256 public liquidatorReward; // 50 for 50%
+    uint256 public penaltyRate = 10; // 10 for 10%
 
     uint256 public constant PRECISION = 1e18; // For precise calculations
 
@@ -85,7 +88,6 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
     error EmergencyWithdrawFailed();
     error PositionNotLiquidatable();
     error LiquidationFailed();
-    error InvalidLiquidator();
 
     // ================================================= //
     // ================== CONSTRUCTOR ================== //
@@ -346,52 +348,45 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
 
     /// @notice Liquidates an undercollateralized position
     /// @param positionId The ID of the position to liquidate
-    /// @param liquidator The address receiving the liquidation reward
-    function liquidatePosition(
-        uint256 positionId,
-        address liquidator
-    ) external nonReentrant {
-        if (liquidator == address(0)) revert InvalidLiquidator();
-        Position storage pos = positions[positionId];
-        if (pos.owner == address(0)) revert InvalidPosition();
+    function liquidatePosition(uint256 positionId) external nonReentrant {
+        Position storage position = positions[positionId];
+        address positionOwner = position.owner;
+        uint256 collateralAmount = position.collateralAmount;
+        uint256 debtAmount = position.debtAmount;
+
+        if (positionOwner == address(0)) revert InvalidPosition();
         if (!isLiquidatable(positionId)) revert PositionNotLiquidatable();
 
-        uint256 collateralValue = getCollateralValue(pos.collateralAmount);
-        uint256 debtValue = getLoanValue(pos.debtAmount);
-        uint256 collateralPrice = _getPrice(collateralPriceFeed);
-        uint256 loanPrice = _getPrice(loanPriceFeed);
+        uint256 reward = (collateralAmount * liquidatorReward) / 100;
+        uint256 penalty = (collateralAmount * penaltyRate) / 100;
+        uint256 remainingCollateral = collateralAmount - reward - penalty;
 
-        // Calculate the debt to repay (up to the full debt amount)
-        uint256 debtToRepay = (debtValue * PRECISION) / loanPrice;
-        if (debtToRepay > pos.debtAmount) debtToRepay = pos.debtAmount;
-
-        // Calculate collateral to seize
-        uint256 totalCollateralToSeize = (collateralValue * PRECISION) /
-            collateralPrice;
-        uint256 reward = (totalCollateralToSeize * liquidatorReward) / 100;
-        uint256 debtCollateralCover = totalCollateralToSeize - reward;
-
-        // Ensure collateral covers the debt
-        if (debtCollateralCover < debtToRepay) {
-            reward = totalCollateralToSeize; // Take all collateral if insufficient
-            debtToRepay = debtCollateralCover;
+        if (!collateralToken.transfer(msg.sender, reward)) {
+            revert LiquidationFailed();
+        }
+        if (remainingCollateral > 0) {
+            if (!collateralToken.transfer(positionOwner, remainingCollateral)) {
+                revert LiquidationFailed();
+            }
         }
 
-        // Update position and balances
-        pos.collateralAmount = 0;
-        pos.debtAmount -= debtToRepay;
-        collateralBalances[pos.owner] -= totalCollateralToSeize;
-        loanBalances[pos.owner] -= debtToRepay;
+        collateralBalances[positionOwner] -= collateralAmount;
+        loanBalances[positionOwner] -= debtAmount;
 
-        // Transfer collateral to liquidator
-        if (!collateralToken.transfer(liquidator, reward)) {
-            revert CollateralWithdrawalFailed();
+        delete positions[positionId];
+
+        uint256[] storage userPositions = userPositionIds[positionOwner];
+        for (uint256 i = 0; i < userPositions.length; i++) {
+            if (userPositions[i] == positionId) {
+                userPositions[i] = userPositions[userPositions.length - 1];
+                userPositions.pop();
+                break;
+            }
         }
 
-        // Burn the repaid loan tokens
-        loanToken.burn(pos.owner, debtToRepay);
+        loanToken.burn(positionOwner, debtAmount);
 
-        emit PositionLiquidated(positionId, liquidator, reward, debtToRepay);
+        emit PositionLiquidated(positionId, msg.sender, reward, debtAmount);
     }
 
     /// @notice Checks if a position is liquidatable

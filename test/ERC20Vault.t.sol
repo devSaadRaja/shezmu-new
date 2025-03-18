@@ -30,6 +30,7 @@ contract ERC20VaultTest is Test {
     address deployer = vm.addr(1);
     address user1 = vm.addr(2);
     address user2 = vm.addr(3);
+    address user3 = vm.addr(4);
 
     uint256 constant INITIAL_LTV = 50;
     uint256 constant LIQUIDATION_THRESHOLD = 110; // 110% of INITIAL_LTV
@@ -770,17 +771,11 @@ contract ERC20VaultTest is Test {
         vm.stopPrank();
     }
 
-    function test_InvalidLiquidator() public {
-        uint256 positionId = vault.nextPositionId() - 1;
-        vm.expectRevert(ERC20Vault.InvalidLiquidator.selector);
-        vault.liquidatePosition(positionId, address(0));
-    }
-
     function test_NonExistentPosition() public {
         vm.startPrank(user2);
         uint256 nonExistentPositionId = 999;
         vm.expectRevert(ERC20Vault.InvalidPosition.selector);
-        vault.liquidatePosition(nonExistentPositionId, user2);
+        vault.liquidatePosition(nonExistentPositionId);
         vm.stopPrank();
     }
 
@@ -794,7 +789,7 @@ contract ERC20VaultTest is Test {
         vm.startPrank(user2);
         uint256 positionId = vault.nextPositionId() - 1;
         vm.expectRevert(ERC20Vault.PositionNotLiquidatable.selector);
-        vault.liquidatePosition(positionId, user2);
+        vault.liquidatePosition(positionId);
         vm.stopPrank();
     }
 
@@ -815,7 +810,7 @@ contract ERC20VaultTest is Test {
         uint256 userLoanBalanceBefore = shezUSD.balanceOf(user1);
 
         vm.prank(liquidator);
-        vault.liquidatePosition(positionId, liquidator);
+        vault.liquidatePosition(positionId);
 
         // Check position state
         (, uint256 collateral, uint256 debt) = vault.getPosition(positionId);
@@ -877,8 +872,8 @@ contract ERC20VaultTest is Test {
         );
 
         vm.prank(liquidator);
-        vm.expectRevert(ERC20Vault.CollateralWithdrawalFailed.selector);
-        vault.liquidatePosition(positionId, liquidator);
+        vm.expectRevert(ERC20Vault.LiquidationFailed.selector);
+        vault.liquidatePosition(positionId);
 
         // Verify position unchanged
         (, uint256 collateral, uint256 debt) = vault.getPosition(positionId);
@@ -905,13 +900,13 @@ contract ERC20VaultTest is Test {
         address liquidator = user2;
         vm.prank(liquidator);
         vm.expectRevert(ERC20Vault.PositionNotLiquidatable.selector);
-        vault.liquidatePosition(positionId, liquidator);
+        vault.liquidatePosition(positionId);
     }
 
     function test_LiquidationAtThresholdBoundary() public {
         vm.startPrank(user1);
-        uint256 collateralAmount = 1000 ether; // $200,000
-        uint256 debtAmount = 500 ether; // $50,000, health = 4 initially
+        uint256 collateralAmount = 1000 ether;
+        uint256 debtAmount = 500 ether;
         WETH.approve(address(vault), collateralAmount);
         vault.openPosition(address(WETH), collateralAmount, debtAmount);
         vm.stopPrank();
@@ -933,6 +928,171 @@ contract ERC20VaultTest is Test {
         address liquidator = user2;
         vm.prank(liquidator);
         vm.expectRevert(ERC20Vault.PositionNotLiquidatable.selector);
-        vault.liquidatePosition(positionId, liquidator);
+        vault.liquidatePosition(positionId);
+    }
+
+    function test_HealthSlightlyBelowThreshold() public {
+        vm.startPrank(user1);
+        uint256 collateralAmount = 1000 ether;
+        uint256 debtAmount = 500 ether;
+        WETH.approve(address(vault), collateralAmount);
+        vault.openPosition(address(WETH), collateralAmount, debtAmount);
+        vm.stopPrank();
+
+        uint256 positionId = vault.nextPositionId() - 1;
+
+        vm.prank(deployer);
+        wethPriceFeed.setPrice(274 * 10 ** 7); // $27.4
+
+        bool liquidatable = vault.isLiquidatable(positionId);
+        assertTrue(
+            liquidatable,
+            "Health slightly below threshold should be liquidatable"
+        );
+    }
+
+    function test_BurnFailure() public {
+        vm.startPrank(user1);
+        WETH.approve(address(vault), 1000 ether);
+        vault.openPosition(address(WETH), 1000 ether, 500 ether);
+        vm.stopPrank();
+
+        uint256 positionId = vault.nextPositionId() - 1;
+
+        vm.prank(deployer);
+        wethPriceFeed.setPrice(1 * 10 ** 8); // $1
+
+        // Revoke burn permission
+        vm.prank(deployer);
+        shezUSD.revokeRole(keccak256("BURNER_ROLE"), address(vault));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                address(vault),
+                keccak256("BURNER_ROLE")
+            )
+        );
+        vm.prank(user2);
+        vault.liquidatePosition(positionId);
+    }
+
+    function test_RemainingCollateralTransferFailure() public {
+        vm.startPrank(user1);
+        uint256 collateralAmount = 1000 ether;
+        uint256 debtAmount = 500 ether;
+        WETH.approve(address(vault), collateralAmount);
+        vault.openPosition(address(WETH), collateralAmount, debtAmount);
+        vm.stopPrank();
+
+        uint256 positionId = vault.nextPositionId() - 1;
+
+        // Make position liquidatable
+        vm.prank(deployer);
+        wethPriceFeed.setPrice(1 * 10 ** 8); // $1
+
+        address liquidator = user2;
+
+        // First mock the liquidator reward transfer to succeed
+        vm.mockCall(
+            address(WETH),
+            abi.encodeWithSelector(
+                WETH.transfer.selector,
+                liquidator,
+                500 ether // 50% of collateral as reward
+            ),
+            abi.encode(true)
+        );
+
+        // Then mock the remaining collateral transfer to fail
+        vm.mockCall(
+            address(WETH),
+            abi.encodeWithSelector(
+                WETH.transfer.selector,
+                user1, // position owner
+                400 ether // Remaining collateral after reward and penalty
+            ),
+            abi.encode(false)
+        );
+
+        vm.prank(liquidator);
+        vm.expectRevert(ERC20Vault.LiquidationFailed.selector);
+        vault.liquidatePosition(positionId);
+
+        // Verify position unchanged
+        (, uint256 collateral, uint256 debt) = vault.getPosition(positionId);
+        assertEq(collateral, collateralAmount, "Collateral should remain");
+        assertEq(debt, debtAmount, "Debt should remain");
+    }
+
+    function test_LiquidationMultiplePositionsLoop() public {
+        vm.startPrank(user1);
+
+        uint256 collateralAmount = 1000 ether;
+        uint256 debtAmount = 500 ether;
+
+        // Open three positions
+        WETH.approve(address(vault), collateralAmount * 3);
+        vault.openPosition(address(WETH), collateralAmount, debtAmount); // Position 1
+        vault.openPosition(address(WETH), collateralAmount, debtAmount); // Position 2
+        vault.openPosition(address(WETH), collateralAmount, debtAmount); // Position 3
+
+        uint256 positionId1 = 1;
+        uint256 positionId2 = 2; // Middle position (to be liquidated)
+        uint256 positionId3 = 3;
+
+        vm.stopPrank();
+
+        // Make the middle position liquidatable
+        vm.prank(deployer);
+        wethPriceFeed.setPrice(1 * 10 ** 8); // $1
+
+        address liquidator = user2;
+        vm.prank(liquidator);
+        vault.liquidatePosition(positionId2);
+
+        // Assert that position 2 is removed
+        uint256[] memory userPositions = vault.getUserPositionIds(user1);
+        assertEq(
+            userPositions.length,
+            2,
+            "User should have only two positions left"
+        );
+
+        // Check that the array correctly shifts elements
+        assertEq(userPositions[0], positionId1, "First position should remain");
+        assertEq(userPositions[1], positionId3, "Last position should remain");
+
+        // Check that position 2 is fully removed
+        (, uint256 pos2Collateral, uint256 pos2Debt) = vault.getPosition(
+            positionId2
+        );
+        assertEq(
+            pos2Collateral,
+            0,
+            "Liquidated position should have zero collateral"
+        );
+        assertEq(pos2Debt, 0, "Liquidated position should have zero debt");
+
+        // Verify the remaining positions are untouched
+        (, uint256 pos1Collateral, uint256 pos1Debt) = vault.getPosition(
+            positionId1
+        );
+        (, uint256 pos3Collateral, uint256 pos3Debt) = vault.getPosition(
+            positionId3
+        );
+
+        assertEq(
+            pos1Collateral,
+            collateralAmount,
+            "Position 1 should be unaffected"
+        );
+        assertEq(pos1Debt, debtAmount, "Position 1 debt should be intact");
+        assertEq(
+            pos3Collateral,
+            collateralAmount,
+            "Position 3 should be unaffected"
+        );
+        assertEq(pos3Debt, debtAmount, "Position 3 debt should be intact");
     }
 }
