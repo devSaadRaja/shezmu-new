@@ -872,4 +872,114 @@ contract ERC20VaultInvariantTest is Test {
             vault.liquidatePosition(positionId);
         }
     }
+
+    function invariant_UserPositionsRemovedAfterLiquidation() public {
+        uint256[] memory posIds = vault.getUserPositionIds(user1);
+
+        for (uint256 i = 0; i < posIds.length; i++) {
+            uint256 positionId = posIds[i];
+            (, uint256 collateralAmount, uint256 debtAmount) = vault
+                .getPosition(positionId);
+
+            if (debtAmount == 0 || collateralAmount == 0) continue; // Skip empty positions
+
+            wethPriceFeed.setPrice(1 * 10 ** 8); // Make it liquidatable
+
+            bool liquidatable = vault.isLiquidatable(positionId);
+            if (!liquidatable) continue;
+
+            // Liquidate the position
+            vm.prank(user3);
+            vault.liquidatePosition(positionId);
+
+            // Ensure the position is removed from userPositionIds mapping
+            uint256[] memory updatedPosIds = vault.getUserPositionIds(user1);
+            for (uint256 j = 0; j < updatedPosIds.length; j++) {
+                assertFalse(
+                    updatedPosIds[j] == positionId,
+                    "Position ID should be removed after liquidation!"
+                );
+            }
+        }
+    }
+
+    function invariant_FlashLoanCannotManipulateHealthFactor() public {
+        uint256[] memory posIds = vault.getUserPositionIds(user1);
+
+        for (uint256 i = 0; i < posIds.length; i++) {
+            uint256 positionId = posIds[i];
+            (
+                address owner,
+                uint256 collateralAmount,
+                uint256 debtAmount
+            ) = vault.getPosition(positionId);
+
+            if (debtAmount == 0 || collateralAmount == 0) continue; // Skip empty positions
+            if (owner != user1) continue; // Ensure we are testing `user1`'s position
+
+            wethPriceFeed.setPrice(1 * 10 ** 8); // Drastically drop price, making it liquidatable
+
+            bool liquidatableBefore = vault.isLiquidatable(positionId);
+            if (!liquidatableBefore) continue;
+
+            // Attempt flash-loan-style manipulation: add and immediately remove collateral
+            uint256 flashAmount = collateralAmount / 2;
+            WETH.approve(address(vault), flashAmount);
+
+            try vault.addCollateral(positionId, flashAmount) {
+                try vault.withdrawCollateral(positionId, flashAmount) {
+                    // The position should **still** be liquidatable
+                    bool liquidatableAfter = vault.isLiquidatable(positionId);
+                    assertTrue(
+                        liquidatableAfter,
+                        "Flash loan should not prevent liquidation!"
+                    );
+                } catch {
+                    // Withdrawal failed, still need to check if liquidation is still possible
+                    bool liquidatableAfterFail = vault.isLiquidatable(
+                        positionId
+                    );
+                    assertTrue(
+                        liquidatableAfterFail,
+                        "Flash loan should not prevent liquidation even if withdrawal fails!"
+                    );
+                }
+            } catch {
+                // Adding collateral failed, ensure it is still liquidatable
+                bool liquidatableAfterFail = vault.isLiquidatable(positionId);
+                assertTrue(
+                    liquidatableAfterFail,
+                    "Flash loan should not prevent liquidation even if adding collateral fails!"
+                );
+            }
+        }
+    }
+
+    function invariant_DebtMappingClearedAfterRepayment() public {
+        uint256[] memory posIds = vault.getUserPositionIds(user1);
+
+        uint256 totalRepaid = 0;
+        for (uint256 i = 0; i < posIds.length; i++) {
+            uint256 positionId = posIds[i];
+            (, , uint256 debtAmount) = vault.getPosition(positionId);
+
+            if (debtAmount == 0) continue; // Skip positions that already have no debt
+
+            // Repay entire debt
+            shezUSD.approve(address(vault), debtAmount);
+            vm.prank(user1);
+            vault.repayDebt(positionId, debtAmount);
+            totalRepaid += debtAmount;
+        }
+
+        // Fetch updated loan balance
+        uint256 userLoanBalance = vault.getLoanBalance(user1);
+
+        // Ensure that the total repaid matches the initial total debt
+        assertEq(
+            userLoanBalance,
+            0,
+            "Loan balance should be 0 after full repayment!"
+        );
+    }
 }
