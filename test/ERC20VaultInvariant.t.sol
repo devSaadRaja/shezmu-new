@@ -26,6 +26,7 @@ contract ERC20VaultInvariantTest is Test {
     address deployer = vm.addr(1);
     address user1 = vm.addr(2);
     address user2 = vm.addr(3);
+    address user3 = vm.addr(4);
 
     uint256 constant INITIAL_LTV = 50;
     uint256 constant LIQUIDATION_THRESHOLD = 110; // 110% of INITIAL_LTV
@@ -585,5 +586,290 @@ contract ERC20VaultInvariantTest is Test {
             totalDebtExpected,
             "Loan balance mismatch after full debt repayment"
         );
+    }
+
+    function invariant_BadDebtCannotPersist() public view {
+        uint256[] memory posIds = vault.getUserPositionIds(user1);
+
+        for (uint256 i = 0; i < posIds.length; i++) {
+            uint256 positionId = posIds[i];
+            (, uint256 collateralAmount, uint256 debtAmount) = vault
+                .getPosition(positionId);
+
+            if (debtAmount > 0 && collateralAmount > 0) {
+                uint256 health = vault.getPositionHealth(positionId);
+                bool liquidatable = vault.isLiquidatable(positionId);
+
+                // Calculate expected liquidation threshold
+                uint256 liquidationThresholdValue = (vault.ltvRatio() *
+                    vault.liquidationThreshold()) / 100;
+                uint256 requiredHealth = (vault.PRECISION() *
+                    liquidationThresholdValue) / 100;
+
+                if (health >= requiredHealth) {
+                    assertFalse(
+                        liquidatable,
+                        "Position should NOT be liquidatable but is!"
+                    );
+                } else {
+                    assertTrue(
+                        liquidatable,
+                        "Position should be liquidatable but is not!"
+                    );
+                }
+            }
+        }
+    }
+
+    function invariant_ZeroCollateralButDebtExists() public {
+        uint256[] memory posIds = vault.getUserPositionIds(user1);
+
+        for (uint256 i = 0; i < posIds.length; i++) {
+            uint256 positionId = posIds[i];
+            (, uint256 collateralAmount, uint256 debtAmount) = vault
+                .getPosition(positionId);
+
+            // If debt exists but no collateral, it should always be liquidatable
+            if (debtAmount > 0 && collateralAmount == 0) {
+                bool liquidatable = vault.isLiquidatable(positionId);
+                assertTrue(
+                    liquidatable,
+                    "Position with zero collateral but debt should be liquidatable!"
+                );
+
+                // Ensure that liquidating actually removes the debt
+                vm.prank(user2); // Simulate a liquidator
+                vault.liquidatePosition(positionId);
+
+                // Verify the position no longer exists
+                (, uint256 newCollateral, uint256 newDebt) = vault.getPosition(
+                    positionId
+                );
+                assertEq(
+                    newCollateral,
+                    0,
+                    "Collateral should remain 0 after liquidation"
+                );
+                assertEq(newDebt, 0, "Debt should be 0 after liquidation");
+            }
+        }
+    }
+
+    function invariant_DebtGreaterThanCollateralStillLiquidatable() public {
+        uint256[] memory posIds = vault.getUserPositionIds(user1);
+
+        for (uint256 i = 0; i < posIds.length; i++) {
+            uint256 positionId = posIds[i];
+            (, uint256 collateralAmount, ) = vault.getPosition(positionId);
+
+            // Fetch critical values
+            uint256 health = vault.getPositionHealth(positionId);
+            bool liquidatable = vault.isLiquidatable(positionId);
+
+            // Compute the expected liquidation threshold
+            uint256 liquidationThresholdValue = (vault.ltvRatio() *
+                vault.liquidationThreshold()) / 100;
+            uint256 requiredHealth = (vault.PRECISION() *
+                liquidationThresholdValue) / 100;
+
+            if (health < requiredHealth) {
+                assertTrue(
+                    liquidatable,
+                    "Position should be liquidatable but is not!"
+                );
+            } else {
+                assertFalse(
+                    liquidatable,
+                    "Position should NOT be liquidatable but is!"
+                );
+            }
+
+            if (liquidatable) {
+                uint256 liquidatorReward = (collateralAmount *
+                    vault.liquidatorReward()) / 100;
+                uint256 penalty = (collateralAmount * vault.penaltyRate()) /
+                    100;
+                uint256 remainingCollateral = collateralAmount -
+                    liquidatorReward -
+                    penalty;
+
+                uint256 borrowerBalanceBefore = WETH.balanceOf(user1);
+                uint256 liquidatorBalanceBefore = WETH.balanceOf(user3);
+
+                vm.prank(user3);
+                vault.liquidatePosition(positionId);
+
+                // Verify calculations remain correct
+                (, uint256 newCollateral, uint256 newDebt) = vault.getPosition(
+                    positionId
+                );
+                assertEq(
+                    newCollateral,
+                    0,
+                    "Collateral should be 0 after liquidation"
+                );
+                assertEq(newDebt, 0, "Debt should be 0 after liquidation");
+
+                // Ensure liquidator received the correct reward
+                uint256 liquidatorBalanceAfter = WETH.balanceOf(user3);
+                assertEq(
+                    liquidatorBalanceAfter - liquidatorBalanceBefore,
+                    liquidatorReward,
+                    "Liquidator reward mismatch"
+                );
+
+                // Ensure borrower got any remaining collateral (if applicable)
+                uint256 borrowerBalanceAfter = WETH.balanceOf(user1);
+                assertEq(
+                    borrowerBalanceAfter - borrowerBalanceBefore,
+                    remainingCollateral,
+                    "Borrower remaining collateral mismatch"
+                );
+            }
+        }
+    }
+
+    function invariant_CannotLiquidateIfHealthyOrRepaid() public {
+        uint256[] memory posIds = vault.getUserPositionIds(user1);
+
+        for (uint256 i = 0; i < posIds.length; i++) {
+            uint256 positionId = posIds[i];
+            (
+                address owner,
+                uint256 collateralAmount,
+                uint256 debtAmount
+            ) = vault.getPosition(positionId);
+
+            // Ensure we are testing a position owned by user1
+            if (owner != user1) continue;
+
+            bool wasLiquidatable = vault.isLiquidatable(positionId);
+
+            // Scenario 1: Fully repaid position (only if debt > 0)
+            if (debtAmount > 0) {
+                shezUSD.approve(address(vault), debtAmount);
+                vm.prank(user1); // Ensure correct sender
+                vault.repayDebt(positionId, debtAmount);
+            }
+
+            // Scenario 2: Price recovers before liquidation
+            wethPriceFeed.setPrice(1000 * 10 ** 8); // Massive price recovery
+
+            // Scenario 3: Rapid price fluctuations during liquidation
+            wethPriceFeed.setPrice(500 * 10 ** 8); // Then drops again
+
+            bool isStillLiquidatable = vault.isLiquidatable(positionId);
+
+            console.log("==== Debug Info ====");
+            console.log("Position ID:", positionId);
+            console.log("Initial Liquidatable:", wasLiquidatable);
+            console.log("Debt Amount Before Repayment:", debtAmount);
+            console.log("Collateral Amount:", collateralAmount);
+            console.log("After Recovery Liquidatable:", isStillLiquidatable);
+            console.log("=====================");
+
+            // Assert that a repaid or recovered position cannot be liquidated
+            assertFalse(
+                isStillLiquidatable,
+                "Position should NOT be liquidatable after repayment or recovery!"
+            );
+        }
+    }
+
+    function invariant_LiquidatorCannotReceiveMoreThanCollateral() public {
+        uint256[] memory posIds = vault.getUserPositionIds(user1);
+
+        for (uint256 i = 0; i < posIds.length; i++) {
+            uint256 positionId = posIds[i];
+            (, uint256 collateralAmount, uint256 debtAmount) = vault
+                .getPosition(positionId);
+
+            if (debtAmount == 0 || collateralAmount == 0) continue;
+
+            // Set extreme values that might trigger precision issues
+            wethPriceFeed.setPrice(1 * 10 ** 6); // $0.01 per collateral token (massive drop)
+
+            bool liquidatable = vault.isLiquidatable(positionId);
+            if (!liquidatable) continue;
+
+            uint256 liquidatorBalanceBefore = WETH.balanceOf(user3);
+
+            vm.prank(user3);
+            vault.liquidatePosition(positionId);
+
+            uint256 liquidatorBalanceAfter = WETH.balanceOf(user3);
+            uint256 liquidatorReward = liquidatorBalanceAfter -
+                liquidatorBalanceBefore;
+
+            assertLe(
+                liquidatorReward,
+                collateralAmount,
+                "Liquidator received more than total collateral!"
+            );
+        }
+    }
+
+    function invariant_LiquidationFailsGracefullyOnTransferFailure() public {
+        uint256[] memory posIds = vault.getUserPositionIds(user1);
+
+        for (uint256 i = 0; i < posIds.length; i++) {
+            uint256 positionId = posIds[i];
+            (, uint256 collateralAmount, uint256 debtAmount) = vault
+                .getPosition(positionId);
+
+            if (debtAmount == 0 || collateralAmount == 0) continue;
+
+            wethPriceFeed.setPrice(1 * 10 ** 8); // Price drops drastically
+
+            bool liquidatable = vault.isLiquidatable(positionId);
+            if (!liquidatable) continue;
+
+            // Simulate token transfer failure (e.g., ERC20 transfer returning false)
+            vm.mockCall(
+                address(WETH),
+                abi.encodeWithSelector(WETH.transfer.selector),
+                abi.encode(false)
+            );
+
+            vm.prank(user3);
+            vm.expectRevert(ERC20Vault.LiquidationFailed.selector);
+            vault.liquidatePosition(positionId);
+        }
+    }
+
+    function invariant_CannotLiquidateTwice() public {
+        uint256[] memory posIds = vault.getUserPositionIds(user1);
+
+        for (uint256 i = 0; i < posIds.length; i++) {
+            uint256 positionId = posIds[i];
+            (, uint256 collateralAmount, uint256 debtAmount) = vault
+                .getPosition(positionId);
+
+            if (debtAmount == 0 || collateralAmount == 0) continue;
+
+            wethPriceFeed.setPrice(1 * 10 ** 8); // Price drops drastically
+
+            bool liquidatable = vault.isLiquidatable(positionId);
+            if (!liquidatable) continue;
+
+            vm.prank(user3);
+            vault.liquidatePosition(positionId);
+
+            // Ensure the position is now fully closed
+            (, uint256 newCollateral, uint256 newDebt) = vault.getPosition(
+                positionId
+            );
+            assertEq(
+                newCollateral,
+                0,
+                "Collateral should be 0 after liquidation"
+            );
+            assertEq(newDebt, 0, "Debt should be 0 after liquidation");
+
+            // Try to liquidate again and expect failure
+            vm.prank(user3);
+            vm.expectRevert(ERC20Vault.InvalidPosition.selector);
+            vault.liquidatePosition(positionId);
+        }
     }
 }
