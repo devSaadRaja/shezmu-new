@@ -15,6 +15,21 @@ interface EERC20 is IERC20 {
     function burn(address account, uint256 value) external;
 }
 
+interface IInterestCollector {
+    function collectInterest(
+        address vault,
+        address token,
+        uint256 debtAmount
+    ) external;
+
+    function calculateInterestDue(
+        address vault,
+        uint256 debtAmount
+    ) external view returns (uint256);
+
+    function isCollectionReady(address vault) external view returns (bool);
+}
+
 contract ERC20Vault is ReentrancyGuard, Ownable {
     // =============================================== //
     // ================== STRUCTURE ================== //
@@ -45,6 +60,10 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
     mapping(address => uint256) collateralBalances;
     mapping(address => uint256) loanBalances;
 
+    uint256 public totalDebt;
+    bool public interestCollectionEnabled;
+    IInterestCollector public interestCollector;
+
     // ============================================ //
     // ================== EVENTS ================== //
     // ============================================ //
@@ -64,6 +83,9 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         uint256 collateralSeized,
         uint256 debtRepaid
     );
+    event InterestCollectorSet(address indexed interestCollector);
+    event InterestCollected(uint256 interestAmount);
+    event InterestCollectionToggled(bool enabled);
 
     // ============================================ //
     // ================== ERRORS ================== //
@@ -88,6 +110,8 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
     error EmergencyWithdrawFailed();
     error PositionNotLiquidatable();
     error LiquidationFailed();
+    error InterestCollectorNotSet();
+    error InterestCollectionFailed();
 
     // ================================================= //
     // ================== CONSTRUCTOR ================== //
@@ -206,6 +230,19 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         return (loanAmount * loanPrice) / PRECISION;
     }
 
+    /// @notice Gets the pending interest amount that would be collected in the next collection
+    /// @return The pending interest amount
+    function getPendingInterest() public view returns (uint256) {
+        if (
+            address(interestCollector) == address(0) ||
+            !interestCollectionEnabled
+        ) {
+            return 0;
+        }
+
+        return interestCollector.calculateInterestDue(address(this), totalDebt);
+    }
+
     // ===================================================== //
     // ================== WRITE FUNCTIONS ================== //
     // ===================================================== //
@@ -224,6 +261,8 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         }
         if (collateralAmount == 0) revert ZeroCollateralAmount();
         if (debtAmount == 0) revert ZeroLoanAmount();
+
+        _collectInterestIfReady();
 
         uint256 collateralValue = getCollateralValue(collateralAmount);
         uint256 loanValue = getLoanValue(debtAmount);
@@ -251,6 +290,8 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
 
         collateralBalances[msg.sender] += collateralAmount;
         loanBalances[msg.sender] += debtAmount;
+
+        totalDebt += debtAmount;
 
         loanToken.mint(msg.sender, debtAmount);
 
@@ -298,10 +339,14 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
             revert AmountExceedsLoan();
         }
 
+        _collectInterestIfReady();
+
         loanToken.burn(msg.sender, debtAmount);
 
         positions[positionId].debtAmount -= debtAmount;
         loanBalances[msg.sender] -= debtAmount;
+
+        totalDebt -= debtAmount;
 
         emit DebtRepaid(positionId, debtAmount);
     }
@@ -320,6 +365,8 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         if (positions[positionId].collateralAmount < amount) {
             revert InsufficientCollateral();
         }
+
+        _collectInterestIfReady();
 
         uint256 newCollateralAmount = positions[positionId].collateralAmount -
             amount;
@@ -357,6 +404,8 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         if (positionOwner == address(0)) revert InvalidPosition();
         if (!isLiquidatable(positionId)) revert PositionNotLiquidatable();
 
+        _collectInterestIfReady();
+
         uint256 reward = (collateralAmount * liquidatorReward) / 100;
         uint256 penalty = (collateralAmount * penaltyRate) / 100;
         uint256 remainingCollateral = collateralAmount - reward - penalty;
@@ -372,6 +421,8 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
 
         collateralBalances[positionOwner] -= collateralAmount;
         loanBalances[positionOwner] -= debtAmount;
+
+        totalDebt -= debtAmount;
 
         delete positions[positionId];
 
@@ -400,6 +451,12 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         uint256 liquidationThresholdValue = (ltvRatio * liquidationThreshold) /
             100;
         return health < (PRECISION * liquidationThresholdValue) / 100;
+    }
+
+    /// @notice Manually trigger interest collection
+    /// @dev Can be called by anyone, but will only collect if conditions are met
+    function collectInterest() external {
+        _collectInterestIfReady();
     }
 
     // ===================================================== //
@@ -437,6 +494,22 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         if (!success) revert EmergencyWithdrawFailed();
     }
 
+    /// @notice Set the interest collector contract address
+    /// @param _interestCollector The address of the interest collector contract
+    function setInterestCollector(
+        address _interestCollector
+    ) external onlyOwner {
+        interestCollector = IInterestCollector(_interestCollector);
+        emit InterestCollectorSet(_interestCollector);
+    }
+
+    /// @notice Enable or disable interest collection
+    /// @param _enabled Whether interest collection should be enabled
+    function toggleInterestCollection(bool _enabled) external onlyOwner {
+        interestCollectionEnabled = _enabled;
+        emit InterestCollectionToggled(_enabled);
+    }
+
     // ======================================================== //
     // ================== INTERNAL FUNCTIONS ================== //
     // ======================================================== //
@@ -448,5 +521,42 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         (, int256 price, , , ) = priceFeed.latestRoundData();
         if (price <= 0) revert InvalidPrice();
         return uint256(price) * 10 ** (18 - priceFeed.decimals());
+    }
+
+    /// @notice Internal function to collect interest if conditions are met
+    function _collectInterestIfReady() internal {
+        if (
+            address(interestCollector) == address(0) ||
+            !interestCollectionEnabled
+        ) {
+            return;
+        }
+
+        if (
+            interestCollector.isCollectionReady(address(this)) && totalDebt > 0
+        ) {
+            uint256 interestAmount = interestCollector.calculateInterestDue(
+                address(this),
+                totalDebt
+            );
+
+            if (interestAmount > 0) {
+                try
+                    interestCollector.collectInterest(
+                        address(this),
+                        address(loanToken),
+                        totalDebt
+                    )
+                {
+                    loanToken.mint(address(interestCollector), interestAmount);
+                    totalDebt += interestAmount;
+
+                    emit InterestCollected(interestAmount);
+                } catch {
+                    // Continue execution even if interest collection fails
+                    emit InterestCollected(0);
+                }
+            }
+        }
     }
 }
