@@ -8,6 +8,7 @@ import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.so
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 
 import "../src/ERC20Vault.sol";
+import "../src/InterestCollector.sol";
 import "../src/mock/MockERC20.sol";
 import "../src/mock/MockERC20Mintable.sol";
 import "../src/mock/MockPriceFeed.sol";
@@ -31,10 +32,14 @@ contract ERC20VaultTest is Test {
     address user1 = vm.addr(2);
     address user2 = vm.addr(3);
     address user3 = vm.addr(4);
+    address treasury = vm.addr(5);
+
+    InterestCollector interestCollector;
 
     uint256 constant INITIAL_LTV = 50;
     uint256 constant LIQUIDATION_THRESHOLD = 110; // 110% of INITIAL_LTV
     uint256 constant LIQUIDATOR_REWARD = 50; // 50%
+    uint256 constant INTEREST_RATE = 500; // 5% annual interest in basis points
 
     // =========================================== //
     // ================== SETUP ================== //
@@ -49,6 +54,7 @@ contract ERC20VaultTest is Test {
         // wethPriceFeed = IPriceFeed(0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419);
         wethPriceFeed = new MockPriceFeed(200 * 10 ** 8, 8); // $200
         shezUSDPriceFeed = new MockPriceFeed(100 * 10 ** 8, 8); // $100
+        interestCollector = new InterestCollector(treasury);
 
         vault = new ERC20Vault(
             address(WETH),
@@ -59,6 +65,11 @@ contract ERC20VaultTest is Test {
             address(wethPriceFeed),
             address(shezUSDPriceFeed)
         );
+
+        vault.setInterestCollector(address(interestCollector));
+        vault.toggleInterestCollection(true);
+
+        interestCollector.registerVault(address(vault), INTEREST_RATE);
 
         WETH.transfer(user1, 2_000_000 ether);
         WETH.transfer(user2, 2_000_000 ether);
@@ -1094,5 +1105,194 @@ contract ERC20VaultTest is Test {
             "Position 3 should be unaffected"
         );
         assertEq(pos3Debt, debtAmount, "Position 3 debt should be intact");
+    }
+
+    function test_CollectInterestManually() public {
+        vm.roll(block.number + 300);
+
+        vm.startPrank(user1);
+        WETH.approve(address(vault), 1000 ether);
+        vault.openPosition(address(WETH), 1000 ether, 500 ether);
+        vm.stopPrank();
+
+        uint256 due = interestCollector.getCollectedInterest(address(shezUSD));
+        assertGt(due, 0, "Interest should be due after block advance");
+    }
+
+    function test_ToggleInterestCollection() public {
+        vm.startPrank(deployer);
+        vault.toggleInterestCollection(false);
+        assertFalse(
+            vault.interestCollectionEnabled(),
+            "Interest collection should be disabled"
+        );
+
+        vm.expectRevert();
+        vm.prank(user1);
+        vault.toggleInterestCollection(true); // Only owner can toggle
+        vm.stopPrank();
+    }
+
+    function test_GetPendingInterestNoCollector() public {
+        vm.startPrank(deployer);
+        vault.setInterestCollector(address(0));
+        assertEq(
+            vault.getPendingInterest(),
+            0,
+            "Pending interest should be 0 with no collector"
+        );
+        vm.stopPrank();
+    }
+
+    function test_GetPendingInterestDisabled() public {
+        vm.startPrank(deployer);
+        vault.toggleInterestCollection(false);
+        assertEq(
+            vault.getPendingInterest(),
+            0,
+            "Pending interest should be 0 when disabled"
+        );
+        vm.stopPrank();
+    }
+
+    function test_InterestCollectorDeployment() public view {
+        assertEq(interestCollector.treasury(), treasury);
+        assertEq(interestCollector.blocksPerYear(), 7160 * 365);
+        assertEq(interestCollector.periodBlocks(), 300);
+    }
+
+    function test_RegisterVault() public {
+        vm.startPrank(deployer);
+        assertEq(interestCollector.getVaultInterestRate(address(vault)), 500);
+        assertEq(interestCollector.getRegisteredVaultsCount(), 1);
+        vm.stopPrank();
+    }
+
+    function test_RegisterVaultErrors() public {
+        vm.startPrank(deployer);
+        vm.expectRevert(InterestCollector.ZeroAddress.selector);
+        interestCollector.registerVault(address(0), 500);
+
+        vm.expectRevert(InterestCollector.InvalidInterestRate.selector);
+        interestCollector.registerVault(address(this), 0);
+
+        vm.expectRevert(InterestCollector.VaultAlreadyRegistered.selector);
+        interestCollector.registerVault(address(vault), 500);
+        vm.stopPrank();
+    }
+
+    function test_UpdateInterestRate() public {
+        vm.startPrank(deployer);
+        interestCollector.updateInterestRate(address(vault), 1000);
+        assertEq(interestCollector.getVaultInterestRate(address(vault)), 1000);
+
+        vm.expectRevert(InterestCollector.VaultNotRegistered.selector);
+        interestCollector.updateInterestRate(address(user1), 500);
+
+        vm.expectRevert(InterestCollector.InvalidInterestRate.selector);
+        interestCollector.updateInterestRate(address(vault), 0);
+        vm.stopPrank();
+    }
+
+    function test_CollectInterestNotReady() public {
+        vm.prank(address(vault));
+        interestCollector.collectInterest(
+            address(vault),
+            address(shezUSD),
+            500 ether
+        ); // Not ready yet
+        assertEq(interestCollector.getCollectedInterest(address(shezUSD)), 0);
+    }
+
+    function test_WithdrawInterest() public {
+        vm.roll(block.number + 300);
+
+        vm.startPrank(user1);
+        WETH.approve(address(vault), 1000 ether);
+        vault.openPosition(address(WETH), 1000 ether, 500 ether);
+        vm.stopPrank();
+
+        vm.prank(address(vault));
+        interestCollector.collectInterest(
+            address(vault),
+            address(shezUSD),
+            500 ether
+        );
+
+        uint256 treasuryBalanceBefore = shezUSD.balanceOf(treasury);
+        vm.prank(deployer);
+        interestCollector.withdrawInterest(address(shezUSD));
+        assertGt(shezUSD.balanceOf(treasury), treasuryBalanceBefore);
+    }
+
+    function test_WithdrawInterestTransferFail() public {
+        vm.startPrank(user1);
+        WETH.approve(address(vault), 1000 ether);
+        vault.openPosition(address(WETH), 1000 ether, 500 ether);
+        vm.stopPrank();
+
+        vm.roll(block.number + 301);
+        vm.prank(address(vault));
+        interestCollector.collectInterest(
+            address(vault),
+            address(shezUSD),
+            500 ether
+        );
+
+        vm.mockCall(
+            address(shezUSD),
+            abi.encodeWithSelector(shezUSD.transfer.selector),
+            abi.encode(false)
+        );
+        vm.expectRevert(InterestCollector.TransferFailed.selector);
+        vm.prank(deployer);
+        interestCollector.withdrawInterest(address(shezUSD));
+    }
+
+    function test_UpdateTreasury() public {
+        vm.startPrank(deployer);
+        address newTreasury = vm.addr(5);
+        interestCollector.updateTreasury(newTreasury);
+        assertEq(interestCollector.treasury(), newTreasury);
+
+        vm.expectRevert(InterestCollector.ZeroAddress.selector);
+        interestCollector.updateTreasury(address(0));
+        vm.stopPrank();
+    }
+
+    function test_SetPeriodBlocks() public {
+        vm.startPrank(deployer);
+        interestCollector.setPeriodBlocks(600);
+        assertEq(interestCollector.periodBlocks(), 600);
+        // assertEq(interestCollector.periodShare(), (600 * 1e18) / (7160 * 365));
+        vm.stopPrank();
+    }
+
+    function test_IsCollectionReady() public {
+        assertFalse(interestCollector.isCollectionReady(address(vault)));
+        vm.roll(block.number + 300);
+        assertTrue(interestCollector.isCollectionReady(address(vault)));
+    }
+
+    function test_CalculateInterestDueEdgeCases() public {
+        vm.startPrank(deployer);
+        assertEq(
+            interestCollector.getCollectedInterest(address(vault)),
+            0
+        ); // No rate set
+
+        vm.roll(block.number + 299); // Less than periodBlocks
+        assertEq(
+            interestCollector.calculateInterestDue(address(vault), 500 ether),
+            0
+        );
+
+        vm.roll(block.number + 1); // Exactly one period
+        uint256 interest = interestCollector.calculateInterestDue(
+            address(vault),
+            500 ether
+        );
+        assertGt(interest, 0);
+        vm.stopPrank();
     }
 }

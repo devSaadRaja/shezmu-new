@@ -16,7 +16,7 @@ contract InterestCollector is ReentrancyGuard, Ownable {
     // =============================================== //
 
     uint256 public constant PRECISION = 1e18;
-    uint256 public blocksPerYear = 7160 * 365; // Estimated blocks per year // ! ============================================
+    uint256 public blocksPerYear = 7160 * 365; // Estimated blocks per year
     uint256 public periodBlocks = 300; // ~60 minutes at 7160 blocks per day
     uint256 public periodShare = (periodBlocks * 1e18) / blocksPerYear; // Scaled by 1e18
 
