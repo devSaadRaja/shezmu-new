@@ -15,24 +15,23 @@ contract InterestCollector is ReentrancyGuard, Ownable {
     // ================== CONSTANTS ================== //
     // =============================================== //
 
-    uint256 public constant PERIOD_BLOCKS = 300; // ~60 minutes at 7160 blocks per day
-    uint256 public constant BLOCKS_PER_YEAR = 7160 * 365; // Estimated blocks per year
-    uint256 public constant PERIOD_SHARE =
-        (PERIOD_BLOCKS * 1e18) / BLOCKS_PER_YEAR; // Scaled by 1e18
     uint256 public constant PRECISION = 1e18;
+    uint256 public blocksPerYear = 7160 * 365; // Estimated blocks per year // ! ============================================
+    uint256 public periodBlocks = 300; // ~60 minutes at 7160 blocks per day
+    uint256 public periodShare = (periodBlocks * 1e18) / blocksPerYear; // Scaled by 1e18
 
     // =============================================== //
     // ================== STORAGE ================== //
     // =============================================== //
 
     // Lending vault => interest rate (annual rate in basis points 500 = 5.00%)
-    mapping(address => uint256) public vaultInterestRates;
+    mapping(address => uint256) vaultInterestRates;
 
     // Vault => last interest collection block
-    mapping(address => uint256) public lastCollectionBlock;
+    mapping(address => uint256) lastCollectionBlock;
 
     // Token => collected interest amount
-    mapping(address => uint256) public collectedInterest;
+    mapping(address => uint256) collectedInterest;
 
     // List of registered vaults
     address[] public registeredVaults;
@@ -70,7 +69,6 @@ contract InterestCollector is ReentrancyGuard, Ownable {
     error VaultNotRegistered();
     error InvalidInterestRate();
     error NoInterestToCollect();
-    error CollectionTooEarly();
     error TransferFailed();
 
     // ================================================= //
@@ -95,6 +93,39 @@ contract InterestCollector is ReentrancyGuard, Ownable {
     }
 
     /**
+     * @notice Retrieve the interest rate for a specific vault
+     * @param vault The address of the vault
+     * @return The annual interest rate for the vault (scaled by 1e18)
+     */
+    function getVaultInterestRate(
+        address vault
+    ) external view returns (uint256) {
+        return vaultInterestRates[vault];
+    }
+
+    /**
+     * @notice Retrieve the last block number when interest was collected for a specific vault
+     * @param vault The address of the vault
+     * @return The block number of the last interest collection
+     */
+    function getLastCollectionBlock(
+        address vault
+    ) external view returns (uint256) {
+        return lastCollectionBlock[vault];
+    }
+
+    /**
+     * @notice Retrieve the total amount of interest collected for a specific token
+     * @param token The address of the token
+     * @return The total collected interest amount for the token
+     */
+    function getCollectedInterest(
+        address token
+    ) external view returns (uint256) {
+        return collectedInterest[token];
+    }
+
+    /**
      * @notice Calculate the interest due for a specific vault
      * @param vault The address of the vault
      * @param debtAmount The current debt amount in the vault
@@ -112,13 +143,13 @@ contract InterestCollector is ReentrancyGuard, Ownable {
         if (currentBlock <= lastCollectionBlock[vault]) return 0;
 
         uint256 blocksPassed = currentBlock - lastCollectionBlock[vault];
-        uint256 periodsPassed = blocksPassed / PERIOD_BLOCKS;
+        uint256 periodsPassed = blocksPassed / periodBlocks;
 
         if (periodsPassed == 0) return 0;
 
         // Interest calculation: Debt * (Rate * Periods * PeriodShare / PRECISION)
         uint256 annualInterest = debtAmount * vaultInterestRates[vault];
-        uint256 periodInterest = (annualInterest * PERIOD_SHARE) /
+        uint256 periodInterest = (annualInterest * periodShare) /
             (10000 * PRECISION);
 
         return periodInterest * periodsPassed;
@@ -133,12 +164,21 @@ contract InterestCollector is ReentrancyGuard, Ownable {
         if (lastCollectionBlock[vault] == 0) return false;
 
         uint256 blocksPassed = block.number - lastCollectionBlock[vault];
-        return blocksPassed >= PERIOD_BLOCKS;
+        return blocksPassed >= periodBlocks;
     }
 
     // ===================================================== //
     // ================== WRITE FUNCTIONS ================== //
     // ===================================================== //
+
+    /**
+     * @notice Update the period blocks and share
+     * @param newPeriodBlocks The new period blocks value
+     */
+    function setPeriodBlocks(uint256 newPeriodBlocks) external onlyOwner {
+        periodBlocks = newPeriodBlocks;
+        periodShare = (periodBlocks * 1e18) / blocksPerYear; // Recalculate periodShare
+    }
 
     /**
      * @notice Register a new vault with an interest rate
@@ -190,7 +230,7 @@ contract InterestCollector is ReentrancyGuard, Ownable {
     ) external nonReentrant {
         if (vaultInterestRates[vault] == 0) revert VaultNotRegistered();
         if (msg.sender != vault) revert VaultNotRegistered();
-        if (!isCollectionReady(vault)) revert CollectionTooEarly();
+        if (!isCollectionReady(vault)) return;
 
         uint256 interestDue = calculateInterestDue(vault, debtAmount);
         if (interestDue == 0) revert NoInterestToCollect();

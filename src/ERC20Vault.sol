@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "forge-std/Test.sol";
-
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -262,8 +260,6 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         if (collateralAmount == 0) revert ZeroCollateralAmount();
         if (debtAmount == 0) revert ZeroLoanAmount();
 
-        _collectInterestIfReady();
-
         uint256 collateralValue = getCollateralValue(collateralAmount);
         uint256 loanValue = getLoanValue(debtAmount);
         uint256 maxLoanValue = (collateralValue * ltvRatio) / 100;
@@ -294,6 +290,8 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         totalDebt += debtAmount;
 
         loanToken.mint(msg.sender, debtAmount);
+
+        _collectInterestIfReady();
 
         emit PositionOpened(
             positionId,

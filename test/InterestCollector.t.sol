@@ -121,7 +121,7 @@ contract InterestCollectorTest is Test {
         uint256 debtAmount = 1000 ether;
         uint256 expectedInterest = (debtAmount *
             INTEREST_RATE *
-            interestCollector.PERIOD_SHARE()) /
+            interestCollector.periodShare()) /
             (10000 * interestCollector.PRECISION());
         assertEq(
             interestCollector.calculateInterestDue(address(vault), debtAmount),
@@ -142,8 +142,11 @@ contract InterestCollectorTest is Test {
         vm.prank(deployer);
         address newVault = vm.addr(5);
         interestCollector.registerVault(newVault, 1000); // 10%
-        assertEq(interestCollector.vaultInterestRates(newVault), 1000);
-        assertEq(interestCollector.lastCollectionBlock(newVault), block.number);
+        assertEq(interestCollector.getVaultInterestRate(newVault), 1000);
+        assertEq(
+            interestCollector.getLastCollectionBlock(newVault),
+            block.number
+        );
         assertEq(interestCollector.getRegisteredVaultsCount(), 2);
     }
 
@@ -179,7 +182,7 @@ contract InterestCollectorTest is Test {
     function test_UpdateInterestRateSuccess() public {
         vm.prank(deployer);
         interestCollector.updateInterestRate(address(vault), 1000);
-        assertEq(interestCollector.vaultInterestRates(address(vault)), 1000);
+        assertEq(interestCollector.getVaultInterestRate(address(vault)), 1000);
     }
 
     function test_UpdateInterestRateVaultNotRegistered() public {
@@ -231,11 +234,11 @@ contract InterestCollectorTest is Test {
         );
 
         assertEq(
-            interestCollector.collectedInterest(address(shezUSD)),
+            interestCollector.getCollectedInterest(address(shezUSD)),
             interestDue
         );
         assertEq(
-            interestCollector.lastCollectionBlock(address(vault)),
+            interestCollector.getLastCollectionBlock(address(vault)),
             block.number
         );
     }
@@ -261,12 +264,24 @@ contract InterestCollectorTest is Test {
     }
 
     function test_CollectInterestTooEarly() public {
+        uint256 amountBefore = interestCollector.getCollectedInterest(
+            address(vault)
+        );
+
         vm.prank(address(vault));
-        vm.expectRevert(InterestCollector.CollectionTooEarly.selector);
         interestCollector.collectInterest(
             address(vault),
             address(shezUSD),
             1000 ether
+        );
+
+        uint256 amountAfter = interestCollector.getCollectedInterest(
+            address(vault)
+        );
+        assertEq(
+            amountBefore,
+            amountAfter,
+            "Collected amount should not update."
         );
     }
 
@@ -277,62 +292,23 @@ contract InterestCollectorTest is Test {
         interestCollector.collectInterest(address(vault), address(shezUSD), 0);
     }
 
-    // function test_WithdrawInterestSuccess() public {
-    //     console.log("BEFORE");
-    //     console.log(
-    //         shezUSD.balanceOf(address(vault)),
-    //         "<<< shezUSD.balanceOf(address(vault))"
-    //     );
-    //     console.log(
-    //         shezUSD.balanceOf(address(interestCollector)),
-    //         "<<< shezUSD.balanceOf(address(interestCollector))"
-    //     );
+    function test_WithdrawInterestSuccess() public {
+        vm.roll(block.number + 300);
 
-    //     vm.startPrank(user1);
-    //     WETH.approve(address(vault), 1000 ether);
-    //     vault.openPosition(address(WETH), 1000 ether, 500 ether);
-    //     vm.stopPrank();
+        vm.startPrank(user1);
+        WETH.approve(address(vault), 1000 ether);
+        vault.openPosition(address(WETH), 1000 ether, 500 ether);
+        vm.stopPrank();
 
-    //     console.log("AFTER OPEN POSITION");
-    //     console.log(
-    //         shezUSD.balanceOf(address(vault)),
-    //         "<<< shezUSD.balanceOf(address(vault))"
-    //     );
-    //     console.log(
-    //         shezUSD.balanceOf(address(interestCollector)),
-    //         "<<< shezUSD.balanceOf(address(interestCollector))"
-    //     );
+        uint256 due = interestCollector.getCollectedInterest(address(shezUSD));
+        assertEq(shezUSD.balanceOf(treasury), 0);
 
-    //     vm.roll(block.number + 300);
-    //     uint256 interestDue = interestCollector.calculateInterestDue(
-    //         address(vault),
-    //         500 ether
-    //     );
-    //     vm.prank(address(vault));
-    //     shezUSD.mint(address(interestCollector), interestDue); // Simulate collected interest
-    //     vm.prank(address(vault));
-    //     interestCollector.collectInterest(
-    //         address(vault),
-    //         address(shezUSD),
-    //         500 ether
-    //     );
+        vm.prank(deployer);
+        interestCollector.withdrawInterest(address(shezUSD));
 
-    //     console.log("BEFORE WITHDRAW");
-    //     console.log(
-    //         shezUSD.balanceOf(address(vault)),
-    //         "<<< shezUSD.balanceOf(address(vault))"
-    //     );
-    //     console.log(
-    //         shezUSD.balanceOf(address(interestCollector)),
-    //         "<<< shezUSD.balanceOf(address(interestCollector))"
-    //     );
-
-    //     vm.prank(deployer);
-    //     interestCollector.withdrawInterest(address(shezUSD));
-
-    //     assertEq(shezUSD.balanceOf(treasury), interestDue);
-    //     assertEq(interestCollector.collectedInterest(address(shezUSD)), 0);
-    // }
+        assertEq(shezUSD.balanceOf(treasury), due);
+        assertEq(interestCollector.getCollectedInterest(address(shezUSD)), 0);
+    }
 
     function test_WithdrawInterestNoInterest() public {
         vm.prank(deployer);
