@@ -17,15 +17,20 @@ interface IInterestCollector {
     function collectInterest(
         address vault,
         address token,
+        uint256 positionId,
         uint256 debtAmount
     ) external;
 
     function calculateInterestDue(
         address vault,
+        uint256 positionId,
         uint256 debtAmount
     ) external view returns (uint256);
 
-    function isCollectionReady(address vault) external view returns (bool);
+    function isCollectionReady(
+        address vault,
+        uint256 positionId
+    ) external view returns (bool);
 }
 
 contract ERC20Vault is ReentrancyGuard, Ownable {
@@ -37,6 +42,7 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         address owner;
         uint256 collateralAmount;
         uint256 debtAmount;
+        uint256 lastInterestCollectionBlock;
     }
 
     IERC20 public collateralToken;
@@ -58,7 +64,7 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
     mapping(address => uint256) collateralBalances;
     mapping(address => uint256) loanBalances;
 
-    uint256 public totalDebt;
+    // uint256 public totalDebt;
     bool public interestCollectionEnabled;
     IInterestCollector public interestCollector;
 
@@ -228,18 +234,18 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         return (loanAmount * loanPrice) / PRECISION;
     }
 
-    /// @notice Gets the pending interest amount that would be collected in the next collection
-    /// @return The pending interest amount
-    function getPendingInterest() public view returns (uint256) {
-        if (
-            address(interestCollector) == address(0) ||
-            !interestCollectionEnabled
-        ) {
-            return 0;
-        }
+    // /// @notice Gets the pending interest amount that would be collected in the next collection
+    // /// @return The pending interest amount
+    // function getPendingInterest() public view returns (uint256) {
+    //     if (
+    //         address(interestCollector) == address(0) ||
+    //         !interestCollectionEnabled
+    //     ) {
+    //         return 0;
+    //     }
 
-        return interestCollector.calculateInterestDue(address(this), totalDebt);
-    }
+    //     return interestCollector.calculateInterestDue(address(this), totalDebt);
+    // }
 
     // ===================================================== //
     // ================== WRITE FUNCTIONS ================== //
@@ -280,18 +286,19 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         positions[positionId] = Position(
             msg.sender,
             collateralAmount,
-            debtAmount
+            debtAmount,
+            block.number
         );
         userPositionIds[msg.sender].push(positionId);
 
         collateralBalances[msg.sender] += collateralAmount;
         loanBalances[msg.sender] += debtAmount;
 
-        totalDebt += debtAmount;
+        // totalDebt += debtAmount;
 
         loanToken.mint(msg.sender, debtAmount);
 
-        _collectInterestIfReady();
+        _collectInterestIfReady(positionId);
 
         emit PositionOpened(
             positionId,
@@ -337,14 +344,14 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
             revert AmountExceedsLoan();
         }
 
-        _collectInterestIfReady();
+        _collectInterestIfReady(positionId);
 
         loanToken.burn(msg.sender, debtAmount);
 
         positions[positionId].debtAmount -= debtAmount;
         loanBalances[msg.sender] -= debtAmount;
 
-        totalDebt -= debtAmount;
+        // totalDebt -= debtAmount;
 
         emit DebtRepaid(positionId, debtAmount);
     }
@@ -364,7 +371,7 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
             revert InsufficientCollateral();
         }
 
-        _collectInterestIfReady();
+        _collectInterestIfReady(positionId);
 
         uint256 newCollateralAmount = positions[positionId].collateralAmount -
             amount;
@@ -402,7 +409,7 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         if (positionOwner == address(0)) revert InvalidPosition();
         if (!isLiquidatable(positionId)) revert PositionNotLiquidatable();
 
-        _collectInterestIfReady();
+        _collectInterestIfReady(positionId);
 
         uint256 reward = (collateralAmount * liquidatorReward) / 100;
         uint256 penalty = (collateralAmount * penaltyRate) / 100;
@@ -420,7 +427,7 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         collateralBalances[positionOwner] -= collateralAmount;
         loanBalances[positionOwner] -= debtAmount;
 
-        totalDebt -= debtAmount;
+        // totalDebt -= debtAmount;
 
         delete positions[positionId];
 
@@ -451,11 +458,11 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         return health < (PRECISION * liquidationThresholdValue) / 100;
     }
 
-    /// @notice Manually trigger interest collection
-    /// @dev Can be called by anyone, but will only collect if conditions are met
-    function collectInterest() external {
-        _collectInterestIfReady();
-    }
+    // /// @notice Manually trigger interest collection
+    // /// @dev Can be called by anyone, but will only collect if conditions are met
+    // function collectInterest() external {
+    //     _collectInterestIfReady();
+    // }
 
     // ===================================================== //
     // ================== OWNER FUNCTIONS ================== //
@@ -522,7 +529,7 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
     }
 
     /// @notice Internal function to collect interest if conditions are met
-    function _collectInterestIfReady() internal {
+    function _collectInterestIfReady(uint256 positionId) internal {
         if (
             address(interestCollector) == address(0) ||
             !interestCollectionEnabled
@@ -530,29 +537,48 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
             return;
         }
 
+        Position storage pos = positions[positionId];
+        if (pos.debtAmount == 0) return;
+
         if (
-            interestCollector.isCollectionReady(address(this)) && totalDebt > 0
+            // interestCollector.isCollectionReady(address(this)) && totalDebt > 0
+            interestCollector.isCollectionReady(address(this), positionId)
         ) {
+            // uint256 interestAmount = interestCollector.calculateInterestDue(
+            //     address(this),
+            //     totalDebt
+            // );
             uint256 interestAmount = interestCollector.calculateInterestDue(
                 address(this),
-                totalDebt
+                positionId,
+                pos.debtAmount
             );
 
             if (interestAmount > 0) {
                 try
+                    // interestCollector.collectInterest(
+                    //     address(this),
+                    //     address(loanToken),
+                    //     totalDebt
+                    // )
                     interestCollector.collectInterest(
                         address(this),
                         address(loanToken),
-                        totalDebt
+                        positionId,
+                        pos.debtAmount
                     )
                 {
                     loanToken.mint(address(interestCollector), interestAmount);
-                    totalDebt += interestAmount;
+
+                    // totalDebt += interestAmount;
+
+                    pos.debtAmount += interestAmount;
+                    loanBalances[pos.owner] += interestAmount;
+                    pos.lastInterestCollectionBlock = block.number;
 
                     emit InterestCollected(interestAmount);
                 } catch {
                     // Continue execution even if interest collection fails
-                    emit InterestCollected(0);
                 }
             }
         }

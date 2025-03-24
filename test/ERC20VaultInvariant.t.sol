@@ -4,6 +4,7 @@ pragma solidity ^0.8.19;
 import "forge-std/Test.sol";
 
 import "../src/ERC20Vault.sol";
+import "../src/InterestCollector.sol";
 import "../src/mock/MockERC20.sol";
 import "../src/mock/MockERC20Mintable.sol";
 import "../src/mock/MockPriceFeed.sol";
@@ -27,10 +28,14 @@ contract ERC20VaultInvariantTest is Test {
     address user1 = vm.addr(2);
     address user2 = vm.addr(3);
     address user3 = vm.addr(4);
+    address treasury = vm.addr(5);
+
+    InterestCollector interestCollector;
 
     uint256 constant INITIAL_LTV = 50;
     uint256 constant LIQUIDATION_THRESHOLD = 110; // 110% of INITIAL_LTV
     uint256 constant LIQUIDATOR_REWARD = 50; // 50%
+    uint256 constant INTEREST_RATE = 500; // 5% annual interest in basis points
 
     mapping(uint256 => uint256) public initialCollateral; // positionId => initial amount
     mapping(uint256 => uint256) public addedCollateral; // positionId => total added
@@ -39,6 +44,7 @@ contract ERC20VaultInvariantTest is Test {
     mapping(uint256 => uint256) public repaidDebt; // positionId => total repaid
     mapping(address => uint256) public lastPriceUpdate; // Token address => last price
     mapping(uint256 => uint256) public ltvAtCreation; // positionId => LTV at creation
+    mapping(uint256 => uint256) public interestAccrued;
     uint256 public initialWETHBalance; // User1's initial WETH balance
 
     // =========================================== //
@@ -64,6 +70,12 @@ contract ERC20VaultInvariantTest is Test {
             address(wethPriceFeed),
             address(shezUSDPriceFeed)
         );
+        interestCollector = new InterestCollector(treasury);
+
+        vault.setInterestCollector(address(interestCollector));
+        vault.toggleInterestCollection(true);
+
+        interestCollector.registerVault(address(vault), INTEREST_RATE);
 
         WETH.transfer(user1, 2_000_000 ether);
         WETH.transfer(user2, 2_000_000 ether);
@@ -89,13 +101,14 @@ contract ERC20VaultInvariantTest is Test {
         // Specify the openPosition function as a target selector
         FuzzSelector memory selectorTest = FuzzSelector({
             addr: address(this),
-            selectors: new bytes4[](5)
+            selectors: new bytes4[](5) // 6
         });
         selectorTest.selectors[0] = this.handler_openPosition.selector;
         selectorTest.selectors[1] = this.handler_addCollateral.selector;
         selectorTest.selectors[2] = this.handler_withdrawCollateral.selector;
         selectorTest.selectors[3] = this.handler_repayDebt.selector;
         selectorTest.selectors[4] = this.handler_updatePriceFeed.selector;
+        // selectorTest.selectors[5] = this.handler_collectInterest.selector;
         targetSelector(selectorTest);
         // FuzzSelector memory selectorVault = FuzzSelector({
         //     addr: address(vault),
@@ -329,6 +342,22 @@ contract ERC20VaultInvariantTest is Test {
         } catch {}
         vm.stopPrank();
     }
+
+    // function handler_collectInterest(uint256 blocksToAdvance) public {
+    //     blocksToAdvance = bound(blocksToAdvance, 0, 10000); // Limit block advancement
+    //     vm.roll(block.number + blocksToAdvance);
+    //     try vault.collectInterest() {
+    //         uint256[] memory posIds = vault.getUserPositionIds(user1);
+    //         for (uint256 i = 0; i < posIds.length; i++) {
+    //             uint256 positionId = posIds[i];
+    //             (, , uint256 newDebt) = vault.getPosition(positionId);
+    //             uint256 interest = newDebt > initialDebt[positionId]
+    //                 ? newDebt - initialDebt[positionId] - repaidDebt[positionId]
+    //                 : 0;
+    //             interestAccrued[positionId] += interest;
+    //         }
+    //     } catch {}
+    // }
 
     // ================================================ //
     // ================== TEST CASES ================== //
@@ -982,4 +1011,102 @@ contract ERC20VaultInvariantTest is Test {
             "Loan balance should be 0 after full repayment!"
         );
     }
+
+    // function invariant_InterestCollectionEdgeCases() public {
+    //     uint256[] memory posIds = vault.getUserPositionIds(user1);
+
+    //     // Case 1: Interest increases debt beyond LTV limit
+    //     for (uint256 i = 0; i < posIds.length; i++) {
+    //         uint256 positionId = posIds[i];
+    //         (, uint256 collateralAmount, uint256 debtAmount) = vault
+    //             .getPosition(positionId);
+    //         if (debtAmount > 0 && collateralAmount > 0) {
+    //             // Simulate significant interest accrual
+    //             vm.roll(block.number + 1000); // ~200k blocks, roughly a month at 7160 blocks/day
+    //             uint256 preInterestDebt = debtAmount;
+    //             vault.collectInterest();
+    //             (, , uint256 postInterestDebt) = vault.getPosition(positionId);
+
+    //             if (postInterestDebt > preInterestDebt) {
+    //                 uint256 collateralValue = vault.getCollateralValue(
+    //                     collateralAmount
+    //                 );
+    //                 uint256 loanValue = vault.getLoanValue(postInterestDebt);
+    //                 uint256 currentLTV = (loanValue * 100) / collateralValue;
+
+    //                 // If interest pushes debt beyond LTV, position should be liquidatable
+    //                 if (currentLTV > INITIAL_LTV) {
+    //                     assertTrue(
+    //                         vault.isLiquidatable(positionId),
+    //                         "Position should be liquidatable when interest pushes debt beyond LTV"
+    //                     );
+    //                 }
+    //             }
+    //         }
+    //     }
+
+    //     // Case 2: Interest collection fails mid-transaction
+    //     if (posIds.length > 0) {
+    //         vm.mockCallRevert(
+    //             address(interestCollector),
+    //             abi.encodeWithSelector(
+    //                 interestCollector.collectInterest.selector
+    //             ),
+    //             "Interest collection failed"
+    //         );
+    //         uint256 preTotalDebt = vault.totalDebt();
+    //         vm.roll(block.number + 300); // Ensure collection is ready
+    //         vault.collectInterest(); // Should emit InterestCollected(0) and not affect state
+    //         assertEq(
+    //             vault.totalDebt(),
+    //             preTotalDebt,
+    //             "Total debt should not change on interest collection failure"
+    //         );
+    //         for (uint256 i = 0; i < posIds.length; i++) {
+    //             uint256 positionId = posIds[i];
+    //             (, , uint256 debtAmount) = vault.getPosition(positionId);
+    //             assertEq(
+    //                 debtAmount,
+    //                 initialDebt[positionId] +
+    //                     interestAccrued[positionId] -
+    //                     repaidDebt[positionId],
+    //                 "Position debt should not change on interest collection failure"
+    //             );
+    //         }
+
+    //         console.log(posIds.length, "<<< posIds.length");
+    //     }
+
+    //     console.log(vault.totalDebt(), "<<< vault.totalDebt() BEFORE");
+
+    //     // Case 3: Interest collection with zero total debt
+    //     vm.startPrank(user1);
+    //     for (uint256 i = 0; i < posIds.length; i++) {
+    //         uint256 positionId = posIds[i];
+    //         (, , uint256 debtAmount) = vault.getPosition(positionId);
+    //         if (debtAmount > 0) {
+    //             shezUSD.approve(address(vault), debtAmount);
+    //             vault.repayDebt(positionId, debtAmount);
+    //         }
+    //     }
+    //     vm.stopPrank();
+
+    //     console.log(vault.totalDebt(), "<<< vault.totalDebt() AFTER");
+
+    //     // assertEq(
+    //     //     vault.totalDebt(),
+    //     //     0,
+    //     //     "Total debt should be zero after full repayment"
+    //     // );
+    //     vm.roll(block.number + 300); // Advance blocks
+    //     uint256 preInterestBalance = shezUSD.balanceOf(
+    //         address(interestCollector)
+    //     );
+    //     vault.collectInterest();
+    //     assertEq(
+    //         shezUSD.balanceOf(address(interestCollector)),
+    //         preInterestBalance,
+    //         "No interest should be collected when total debt is zero"
+    //     );
+    // }
 }

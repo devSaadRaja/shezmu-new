@@ -28,7 +28,9 @@ contract InterestCollector is ReentrancyGuard, Ownable {
     mapping(address => uint256) vaultInterestRates;
 
     // Vault => last interest collection block
-    mapping(address => uint256) lastCollectionBlock;
+    // mapping(address => uint256) lastCollectionBlock;
+    // ! Vault => Position ID => last interest collection block
+    mapping(address => mapping(uint256 => uint256)) lastCollectionBlock;
 
     // Token => collected interest amount
     mapping(address => uint256) collectedInterest;
@@ -109,9 +111,11 @@ contract InterestCollector is ReentrancyGuard, Ownable {
      * @return The block number of the last interest collection
      */
     function getLastCollectionBlock(
-        address vault
+        address vault,
+        uint256 positionId
     ) external view returns (uint256) {
-        return lastCollectionBlock[vault];
+        // return lastCollectionBlock[vault];
+        return lastCollectionBlock[vault][positionId];
     }
 
     /**
@@ -131,23 +135,47 @@ contract InterestCollector is ReentrancyGuard, Ownable {
      * @param debtAmount The current debt amount in the vault
      * @return interestDue The amount of interest due
      */
+    // function calculateInterestDue(
+    //     address vault,
+    //     uint256 debtAmount
+    // ) public view returns (uint256) {
+    //     if (vaultInterestRates[vault] == 0) return 0;
+    //     if (lastCollectionBlock[vault] == 0) return 0;
+    //     if (debtAmount == 0) return 0;
+
+    //     uint256 currentBlock = block.number;
+    //     if (currentBlock <= lastCollectionBlock[vault]) return 0;
+
+    //     uint256 blocksPassed = currentBlock - lastCollectionBlock[vault];
+    //     uint256 periodsPassed = blocksPassed / periodBlocks;
+
+    //     if (periodsPassed == 0) return 0;
+
+    //     // Interest calculation: Debt * (Rate * Periods * PeriodShare / PRECISION)
+    //     uint256 annualInterest = debtAmount * vaultInterestRates[vault];
+    //     uint256 periodInterest = (annualInterest * periodShare) /
+    //         (10000 * PRECISION);
+
+    //     return periodInterest * periodsPassed;
+    // }
     function calculateInterestDue(
         address vault,
+        uint256 positionId,
         uint256 debtAmount
     ) public view returns (uint256) {
         if (vaultInterestRates[vault] == 0) return 0;
-        if (lastCollectionBlock[vault] == 0) return 0;
+        if (lastCollectionBlock[vault][positionId] == 0) return 0;
         if (debtAmount == 0) return 0;
 
         uint256 currentBlock = block.number;
-        if (currentBlock <= lastCollectionBlock[vault]) return 0;
+        if (currentBlock <= lastCollectionBlock[vault][positionId]) return 0;
 
-        uint256 blocksPassed = currentBlock - lastCollectionBlock[vault];
+        uint256 blocksPassed = currentBlock -
+            lastCollectionBlock[vault][positionId];
         uint256 periodsPassed = blocksPassed / periodBlocks;
 
         if (periodsPassed == 0) return 0;
 
-        // Interest calculation: Debt * (Rate * Periods * PeriodShare / PRECISION)
         uint256 annualInterest = debtAmount * vaultInterestRates[vault];
         uint256 periodInterest = (annualInterest * periodShare) /
             (10000 * PRECISION);
@@ -160,10 +188,17 @@ contract InterestCollector is ReentrancyGuard, Ownable {
      * @param vault The address of the vault to check
      * @return True if at least one period has passed since last collection
      */
-    function isCollectionReady(address vault) public view returns (bool) {
-        if (lastCollectionBlock[vault] == 0) return false;
+    function isCollectionReady(
+        address vault,
+        uint256 positionId
+    ) public view returns (bool) {
+        // if (lastCollectionBlock[vault] == 0) return false;
+        // uint256 blocksPassed = block.number - lastCollectionBlock[vault];
 
-        uint256 blocksPassed = block.number - lastCollectionBlock[vault];
+        if (lastCollectionBlock[vault][positionId] == 0) return false;
+
+        uint256 blocksPassed = block.number -
+            lastCollectionBlock[vault][positionId];
         return blocksPassed >= periodBlocks;
     }
 
@@ -194,7 +229,7 @@ contract InterestCollector is ReentrancyGuard, Ownable {
         if (interestRate == 0) revert InvalidInterestRate();
 
         vaultInterestRates[vault] = interestRate;
-        lastCollectionBlock[vault] = block.number;
+        // lastCollectionBlock[vault] = block.number;
         registeredVaults.push(vault);
 
         emit VaultRegistered(vault, interestRate);
@@ -216,26 +251,44 @@ contract InterestCollector is ReentrancyGuard, Ownable {
         emit InterestRateUpdated(vault, newInterestRate);
     }
 
-    /**
-     * @notice Collect interest from a vault
-     * @param vault The address of the vault
-     * @param token The loan token address
-     * @param debtAmount The current total debt amount in the vault
-     * @dev This function should be called by the vault during suitable operations
-     */
+    // /**
+    //  * @notice Collect interest from a vault
+    //  * @param vault The address of the vault
+    //  * @param token The loan token address
+    //  * @param debtAmount The current total debt amount in the vault
+    //  * @dev This function should be called by the vault during suitable operations
+    //  */
+    // function collectInterest(
+    //     address vault,
+    //     address token,
+    //     uint256 debtAmount
+    // ) external nonReentrant {
+    //     if (vaultInterestRates[vault] == 0) revert VaultNotRegistered();
+    //     if (msg.sender != vault) revert VaultNotRegistered();
+    //     if (!isCollectionReady(vault)) return;
+
+    //     uint256 interestDue = calculateInterestDue(vault, debtAmount);
+    //     if (interestDue == 0) revert NoInterestToCollect();
+
+    //     lastCollectionBlock[vault] = block.number;
+    //     collectedInterest[token] += interestDue;
+
+    //     emit InterestCollected(vault, token, interestDue);
+    // }
     function collectInterest(
         address vault,
-        address token,
+        address token, 
+        uint256 positionId,
         uint256 debtAmount
     ) external nonReentrant {
         if (vaultInterestRates[vault] == 0) revert VaultNotRegistered();
         if (msg.sender != vault) revert VaultNotRegistered();
-        if (!isCollectionReady(vault)) return;
+        if (!isCollectionReady(vault, positionId)) return;
 
-        uint256 interestDue = calculateInterestDue(vault, debtAmount);
+        uint256 interestDue = calculateInterestDue(vault, positionId, debtAmount);
         if (interestDue == 0) revert NoInterestToCollect();
 
-        lastCollectionBlock[vault] = block.number;
+        lastCollectionBlock[vault][positionId] = block.number;
         collectedInterest[token] += interestDue;
 
         emit InterestCollected(vault, token, interestDue);
