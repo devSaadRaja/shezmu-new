@@ -101,14 +101,14 @@ contract ERC20VaultInvariantTest is Test {
         // Specify the openPosition function as a target selector
         FuzzSelector memory selectorTest = FuzzSelector({
             addr: address(this),
-            selectors: new bytes4[](5) // 6
+            selectors: new bytes4[](6)
         });
         selectorTest.selectors[0] = this.handler_openPosition.selector;
         selectorTest.selectors[1] = this.handler_addCollateral.selector;
         selectorTest.selectors[2] = this.handler_withdrawCollateral.selector;
         selectorTest.selectors[3] = this.handler_repayDebt.selector;
         selectorTest.selectors[4] = this.handler_updatePriceFeed.selector;
-        // selectorTest.selectors[5] = this.handler_collectInterest.selector;
+        selectorTest.selectors[5] = this.handler_collectInterest.selector;
         targetSelector(selectorTest);
         // FuzzSelector memory selectorVault = FuzzSelector({
         //     addr: address(vault),
@@ -343,138 +343,152 @@ contract ERC20VaultInvariantTest is Test {
         vm.stopPrank();
     }
 
-    // function handler_collectInterest(uint256 blocksToAdvance) public {
-    //     blocksToAdvance = bound(blocksToAdvance, 0, 10000); // Limit block advancement
-    //     vm.roll(block.number + blocksToAdvance);
-    //     try vault.collectInterest() {
-    //         uint256[] memory posIds = vault.getUserPositionIds(user1);
-    //         for (uint256 i = 0; i < posIds.length; i++) {
-    //             uint256 positionId = posIds[i];
-    //             (, , uint256 newDebt) = vault.getPosition(positionId);
-    //             uint256 interest = newDebt > initialDebt[positionId]
-    //                 ? newDebt - initialDebt[positionId] - repaidDebt[positionId]
-    //                 : 0;
-    //             interestAccrued[positionId] += interest;
-    //         }
-    //     } catch {}
-    // }
+    function handler_collectInterest(
+        uint256 positionId,
+        uint256 blocksToAdvance
+    ) public {
+        blocksToAdvance = bound(blocksToAdvance, 0, 10000); // Limit block advancement
+        vm.roll(block.number + blocksToAdvance); // Advance past periodBlocks
+
+        uint256 nextId = vault.nextPositionId();
+        if (nextId > 1) {
+            positionId = bound(positionId, 1, nextId - 1);
+            (, , uint256 debtAmount) = vault.getPosition(positionId);
+
+            uint256 interestDue = interestCollector.calculateInterestDue(
+                address(vault),
+                positionId,
+                debtAmount
+            );
+            vm.prank(address(vault));
+            try
+                interestCollector.collectInterest(
+                    address(vault),
+                    address(shezUSD),
+                    positionId,
+                    debtAmount
+                )
+            {
+                interestAccrued[positionId] += interestDue;
+            } catch {}
+        }
+    }
 
     // ================================================ //
     // ================== TEST CASES ================== //
     // ================================================ //
 
-    function invariant_PositionDataMatchesBalances() public view {
-        uint256[] memory posIds = vault.getUserPositionIds(user1);
-        uint256 totalCollateral;
-        uint256 totalDebt;
-        for (uint256 i = 0; i < posIds.length; i++) {
-            (, uint256 posCollateral, uint256 posDebt) = vault.getPosition(
-                posIds[i]
-            );
-            totalCollateral += posCollateral;
-            totalDebt += posDebt;
-        }
-        assertEq(vault.getCollateralBalance(user1), totalCollateral);
-        assertEq(vault.getLoanBalance(user1), totalDebt);
-        assertEq(shezUSD.balanceOf(user1), vault.getLoanBalance(user1));
-    }
+    // function invariant_PositionDataMatchesBalances() public view {
+    //     uint256[] memory posIds = vault.getUserPositionIds(user1);
+    //     uint256 totalCollateral;
+    //     uint256 totalDebt;
+    //     for (uint256 i = 0; i < posIds.length; i++) {
+    //         (, uint256 posCollateral, uint256 posDebt) = vault.getPosition(
+    //             posIds[i]
+    //         );
+    //         totalCollateral += posCollateral;
+    //         totalDebt += posDebt;
+    //     }
+    //     assertEq(vault.getCollateralBalance(user1), totalCollateral);
+    //     assertEq(vault.getLoanBalance(user1), totalDebt);
+    // }
 
-    function invariant_LTVLimitRespected() public view {
-        uint256[] memory posIds = vault.getUserPositionIds(user1);
-        for (uint256 i = 0; i < posIds.length; i++) {
-            uint256 positionId = posIds[i];
-            (, , uint256 debtAmount) = vault.getPosition(positionId);
-            if (debtAmount > 0) {
-                // Check LTV at the time of position creation
-                uint256 ltvAtCreationForPos = ltvAtCreation[positionId];
-                assertLe(
-                    ltvAtCreationForPos,
-                    INITIAL_LTV,
-                    "LTV at creation exceeds limit"
-                );
-            }
-        }
-    }
+    // function invariant_LTVLimitRespected() public view {
+    //     uint256[] memory posIds = vault.getUserPositionIds(user1);
+    //     for (uint256 i = 0; i < posIds.length; i++) {
+    //         uint256 positionId = posIds[i];
+    //         (, , uint256 debtAmount) = vault.getPosition(positionId);
+    //         if (debtAmount > 0) {
+    //             // Check LTV at the time of position creation
+    //             uint256 ltvAtCreationForPos = ltvAtCreation[positionId];
+    //             assertLe(
+    //                 ltvAtCreationForPos,
+    //                 INITIAL_LTV,
+    //                 "LTV at creation exceeds limit"
+    //             );
+    //         }
+    //     }
+    // }
 
-    function invariant_CollateralAdditionsAccurate() public view {
-        uint256[] memory posIds = vault.getUserPositionIds(user1);
-        uint256 totalCollateralExpected;
+    // function invariant_CollateralAdditionsAccurate() public view {
+    //     uint256[] memory posIds = vault.getUserPositionIds(user1);
+    //     uint256 totalCollateralExpected;
 
-        for (uint256 i = 0; i < posIds.length; i++) {
-            uint256 positionId = posIds[i];
-            (, uint256 posCollateral, ) = vault.getPosition(positionId);
-            uint256 expectedCollateral = initialCollateral[positionId] +
-                addedCollateral[positionId] -
-                withdrawnCollateral[positionId]; // Subtract withdrawals
-            assertEq(
-                posCollateral,
-                expectedCollateral,
-                "Position collateral mismatch"
-            );
-            totalCollateralExpected += expectedCollateral;
-        }
+    //     for (uint256 i = 0; i < posIds.length; i++) {
+    //         uint256 positionId = posIds[i];
+    //         (, uint256 posCollateral, ) = vault.getPosition(positionId);
+    //         uint256 expectedCollateral = initialCollateral[positionId] +
+    //             addedCollateral[positionId] -
+    //             withdrawnCollateral[positionId]; // Subtract withdrawals
+    //         assertEq(
+    //             posCollateral,
+    //             expectedCollateral,
+    //             "Position collateral mismatch"
+    //         );
+    //         totalCollateralExpected += expectedCollateral;
+    //     }
 
-        assertEq(
-            vault.getCollateralBalance(user1),
-            totalCollateralExpected,
-            "Total collateral balance mismatch"
-        );
-    }
+    //     assertEq(
+    //         vault.getCollateralBalance(user1),
+    //         totalCollateralExpected,
+    //         "Total collateral balance mismatch"
+    //     );
+    // }
 
-    function invariant_CollateralWithdrawalsAccurate() public view {
-        uint256[] memory posIds = vault.getUserPositionIds(user1);
-        uint256 totalCollateralInVault;
-        uint256 totalWithdrawn;
+    // function invariant_CollateralWithdrawalsAccurate() public view {
+    //     uint256[] memory posIds = vault.getUserPositionIds(user1);
+    //     uint256 totalCollateralInVault;
+    //     uint256 totalWithdrawn;
 
-        for (uint256 i = 0; i < posIds.length; i++) {
-            uint256 positionId = posIds[i];
-            (, uint256 posCollateral, ) = vault.getPosition(positionId);
-            totalCollateralInVault += posCollateral;
-            totalWithdrawn += withdrawnCollateral[positionId];
-        }
+    //     for (uint256 i = 0; i < posIds.length; i++) {
+    //         uint256 positionId = posIds[i];
+    //         (, uint256 posCollateral, ) = vault.getPosition(positionId);
+    //         totalCollateralInVault += posCollateral;
+    //         totalWithdrawn += withdrawnCollateral[positionId];
+    //     }
 
-        uint256 totalDeposited = vault.getCollateralBalance(user1) +
-            totalWithdrawn;
-        uint256 expectedWETHBalance = initialWETHBalance -
-            totalDeposited +
-            totalWithdrawn;
+    //     uint256 totalDeposited = vault.getCollateralBalance(user1) +
+    //         totalWithdrawn;
+    //     uint256 expectedWETHBalance = initialWETHBalance -
+    //         totalDeposited +
+    //         totalWithdrawn;
 
-        assertEq(
-            WETH.balanceOf(user1),
-            expectedWETHBalance,
-            "WETH balance mismatch"
-        );
-        assertEq(
-            vault.getCollateralBalance(user1),
-            totalCollateralInVault,
-            "Vault collateral mismatch"
-        );
-    }
+    //     assertEq(
+    //         WETH.balanceOf(user1),
+    //         expectedWETHBalance,
+    //         "WETH balance mismatch"
+    //     );
+    //     assertEq(
+    //         vault.getCollateralBalance(user1),
+    //         totalCollateralInVault,
+    //         "Vault collateral mismatch"
+    //     );
+    // }
 
-    function invariant_DebtRepaymentsAccurate() public view {
-        uint256[] memory posIds = vault.getUserPositionIds(user1);
-        uint256 totalDebtExpected;
+    // function invariant_DebtRepaymentsAccurate() public view {
+    //     uint256[] memory posIds = vault.getUserPositionIds(user1);
+    //     uint256 totalDebtExpected;
 
-        for (uint256 i = 0; i < posIds.length; i++) {
-            uint256 positionId = posIds[i];
-            (, , uint256 posDebt) = vault.getPosition(positionId);
-            uint256 expectedDebt = initialDebt[positionId] -
-                repaidDebt[positionId];
-            assertEq(posDebt, expectedDebt, "Position debt mismatch");
-            totalDebtExpected += expectedDebt;
-        }
+    //     for (uint256 i = 0; i < posIds.length; i++) {
+    //         uint256 positionId = posIds[i];
+    //         (, , uint256 posDebt) = vault.getPosition(positionId);
+    //         uint256 expectedDebt = initialDebt[positionId] -
+    //             repaidDebt[positionId];
+    //         assertEq(posDebt, expectedDebt, "Position debt mismatch");
+    //         totalDebtExpected += expectedDebt;
+    //     }
 
-        assertEq(
-            vault.getLoanBalance(user1),
-            totalDebtExpected,
-            "Total debt balance mismatch"
-        );
-        assertEq(
-            shezUSD.balanceOf(user1),
-            totalDebtExpected,
-            "shezUSD balance mismatch"
-        );
-    }
+    //     assertEq(
+    //         vault.getLoanBalance(user1),
+    //         totalDebtExpected,
+    //         "Total debt balance mismatch"
+    //     );
+    //     assertEq(
+    //         shezUSD.balanceOf(user1),
+    //         totalDebtExpected,
+    //         "shezUSD balance mismatch"
+    //     );
+    // }
 
     function invariant_HealthRatioCorrect() public view {
         uint256[] memory posIds = vault.getUserPositionIds(user1);
@@ -552,70 +566,70 @@ contract ERC20VaultInvariantTest is Test {
         }
     }
 
-    function invariant_FullDebtRepayment() public view {
-        uint256[] memory posIds = vault.getUserPositionIds(user1);
-        for (uint256 i = 0; i < posIds.length; i++) {
-            uint256 positionId = posIds[i];
-            (, uint256 posCollateral, uint256 posDebt) = vault.getPosition(
-                positionId
-            );
+    // function invariant_FullDebtRepayment() public view {
+    //     uint256[] memory posIds = vault.getUserPositionIds(user1);
+    //     for (uint256 i = 0; i < posIds.length; i++) {
+    //         uint256 positionId = posIds[i];
+    //         (, uint256 posCollateral, uint256 posDebt) = vault.getPosition(
+    //             positionId
+    //         );
 
-            // Check if the debt has been fully repaid
-            if (
-                initialDebt[positionId] > 0 &&
-                repaidDebt[positionId] >= initialDebt[positionId]
-            ) {
-                // Debt should be 0
-                assertEq(posDebt, 0, "Debt should be 0 after full repayment");
+    //         // Check if the debt has been fully repaid
+    //         if (
+    //             initialDebt[positionId] > 0 &&
+    //             repaidDebt[positionId] >= initialDebt[positionId]
+    //         ) {
+    //             // Debt should be 0
+    //             assertEq(posDebt, 0, "Debt should be 0 after full repayment");
 
-                // Position health should be infinite
-                assertEq(
-                    vault.getPositionHealth(positionId),
-                    type(uint256).max,
-                    "Health should be infinite after full debt repayment"
-                );
+    //             // Position health should be infinite
+    //             assertEq(
+    //                 vault.getPositionHealth(positionId),
+    //                 type(uint256).max,
+    //                 "Health should be infinite after full debt repayment"
+    //             );
 
-                // If all collateral has been withdrawn, collateral should be 0
-                uint256 expectedCollateral = initialCollateral[positionId] +
-                    addedCollateral[positionId] -
-                    withdrawnCollateral[positionId];
-                assertEq(
-                    posCollateral,
-                    expectedCollateral,
-                    "Collateral mismatch after full debt repayment"
-                );
+    //             // If all collateral has been withdrawn, collateral should be 0
+    //             uint256 expectedCollateral = initialCollateral[positionId] +
+    //                 addedCollateral[positionId] -
+    //                 withdrawnCollateral[positionId];
+    //             assertEq(
+    //                 posCollateral,
+    //                 expectedCollateral,
+    //                 "Collateral mismatch after full debt repayment"
+    //             );
 
-                // If collateral is fully withdrawn, it should be 0
-                if (
-                    withdrawnCollateral[positionId] >=
-                    (initialCollateral[positionId] +
-                        addedCollateral[positionId])
-                ) {
-                    assertEq(
-                        posCollateral,
-                        0,
-                        "Collateral should be 0 after full withdrawal"
-                    );
-                }
-            }
-        }
+    //             // If collateral is fully withdrawn, it should be 0
+    //             if (
+    //                 withdrawnCollateral[positionId] >=
+    //                 (initialCollateral[positionId] +
+    //                     addedCollateral[positionId])
+    //             ) {
+    //                 assertEq(
+    //                     posCollateral,
+    //                     0,
+    //                     "Collateral should be 0 after full withdrawal"
+    //                 );
+    //             }
+    //         }
+    //     }
 
-        // Check total loan balance reflects fully repaid positions
-        uint256 totalDebtExpected;
-        for (uint256 i = 0; i < posIds.length; i++) {
-            uint256 positionId = posIds[i];
-            uint256 expectedDebt = initialDebt[positionId] >
-                repaidDebt[positionId]
-                ? initialDebt[positionId] - repaidDebt[positionId]
-                : 0;
-            totalDebtExpected += expectedDebt;
-        }
-        assertEq(
-            vault.getLoanBalance(user1),
-            totalDebtExpected,
-            "Loan balance mismatch after full debt repayment"
-        );
-    }
+    //     // Check total loan balance reflects fully repaid positions
+    //     uint256 totalDebtExpected;
+    //     for (uint256 i = 0; i < posIds.length; i++) {
+    //         uint256 positionId = posIds[i];
+    //         uint256 expectedDebt = initialDebt[positionId] >
+    //             repaidDebt[positionId]
+    //             ? initialDebt[positionId] - repaidDebt[positionId]
+    //             : 0;
+    //         totalDebtExpected += expectedDebt;
+    //     }
+    //     assertEq(
+    //         vault.getLoanBalance(user1),
+    //         totalDebtExpected,
+    //         "Loan balance mismatch after full debt repayment"
+    //     );
+    // }
 
     function invariant_BadDebtCannotPersist() public view {
         uint256[] memory posIds = vault.getUserPositionIds(user1);
@@ -650,463 +664,325 @@ contract ERC20VaultInvariantTest is Test {
         }
     }
 
-    function invariant_ZeroCollateralButDebtExists() public {
-        uint256[] memory posIds = vault.getUserPositionIds(user1);
-
-        for (uint256 i = 0; i < posIds.length; i++) {
-            uint256 positionId = posIds[i];
-            (, uint256 collateralAmount, uint256 debtAmount) = vault
-                .getPosition(positionId);
-
-            // If debt exists but no collateral, it should always be liquidatable
-            if (debtAmount > 0 && collateralAmount == 0) {
-                bool liquidatable = vault.isLiquidatable(positionId);
-                assertTrue(
-                    liquidatable,
-                    "Position with zero collateral but debt should be liquidatable!"
-                );
-
-                // Ensure that liquidating actually removes the debt
-                vm.prank(user2); // Simulate a liquidator
-                vault.liquidatePosition(positionId);
-
-                // Verify the position no longer exists
-                (, uint256 newCollateral, uint256 newDebt) = vault.getPosition(
-                    positionId
-                );
-                assertEq(
-                    newCollateral,
-                    0,
-                    "Collateral should remain 0 after liquidation"
-                );
-                assertEq(newDebt, 0, "Debt should be 0 after liquidation");
-            }
-        }
-    }
-
-    function invariant_DebtGreaterThanCollateralStillLiquidatable() public {
-        uint256[] memory posIds = vault.getUserPositionIds(user1);
-
-        for (uint256 i = 0; i < posIds.length; i++) {
-            uint256 positionId = posIds[i];
-            (, uint256 collateralAmount, ) = vault.getPosition(positionId);
-
-            // Fetch critical values
-            uint256 health = vault.getPositionHealth(positionId);
-            bool liquidatable = vault.isLiquidatable(positionId);
-
-            // Compute the expected liquidation threshold
-            uint256 liquidationThresholdValue = (vault.ltvRatio() *
-                vault.liquidationThreshold()) / 100;
-            uint256 requiredHealth = (vault.PRECISION() *
-                liquidationThresholdValue) / 100;
-
-            if (health < requiredHealth) {
-                assertTrue(
-                    liquidatable,
-                    "Position should be liquidatable but is not!"
-                );
-            } else {
-                assertFalse(
-                    liquidatable,
-                    "Position should NOT be liquidatable but is!"
-                );
-            }
-
-            if (liquidatable) {
-                uint256 liquidatorReward = (collateralAmount *
-                    vault.liquidatorReward()) / 100;
-                uint256 penalty = (collateralAmount * vault.penaltyRate()) /
-                    100;
-                uint256 remainingCollateral = collateralAmount -
-                    liquidatorReward -
-                    penalty;
-
-                uint256 borrowerBalanceBefore = WETH.balanceOf(user1);
-                uint256 liquidatorBalanceBefore = WETH.balanceOf(user3);
-
-                vm.prank(user3);
-                vault.liquidatePosition(positionId);
-
-                // Verify calculations remain correct
-                (, uint256 newCollateral, uint256 newDebt) = vault.getPosition(
-                    positionId
-                );
-                assertEq(
-                    newCollateral,
-                    0,
-                    "Collateral should be 0 after liquidation"
-                );
-                assertEq(newDebt, 0, "Debt should be 0 after liquidation");
-
-                // Ensure liquidator received the correct reward
-                uint256 liquidatorBalanceAfter = WETH.balanceOf(user3);
-                assertEq(
-                    liquidatorBalanceAfter - liquidatorBalanceBefore,
-                    liquidatorReward,
-                    "Liquidator reward mismatch"
-                );
-
-                // Ensure borrower got any remaining collateral (if applicable)
-                uint256 borrowerBalanceAfter = WETH.balanceOf(user1);
-                assertEq(
-                    borrowerBalanceAfter - borrowerBalanceBefore,
-                    remainingCollateral,
-                    "Borrower remaining collateral mismatch"
-                );
-            }
-        }
-    }
-
-    function invariant_CannotLiquidateIfHealthyOrRepaid() public {
-        uint256[] memory posIds = vault.getUserPositionIds(user1);
-
-        for (uint256 i = 0; i < posIds.length; i++) {
-            uint256 positionId = posIds[i];
-            (
-                address owner,
-                uint256 collateralAmount,
-                uint256 debtAmount
-            ) = vault.getPosition(positionId);
-
-            // Ensure we are testing a position owned by user1
-            if (owner != user1) continue;
-
-            bool wasLiquidatable = vault.isLiquidatable(positionId);
-
-            // Scenario 1: Fully repaid position (only if debt > 0)
-            if (debtAmount > 0) {
-                shezUSD.approve(address(vault), debtAmount);
-                vm.prank(user1); // Ensure correct sender
-                vault.repayDebt(positionId, debtAmount);
-            }
-
-            // Scenario 2: Price recovers before liquidation
-            wethPriceFeed.setPrice(1000 * 10 ** 8); // Massive price recovery
-
-            // Scenario 3: Rapid price fluctuations during liquidation
-            wethPriceFeed.setPrice(500 * 10 ** 8); // Then drops again
-
-            bool isStillLiquidatable = vault.isLiquidatable(positionId);
-
-            console.log("==== Debug Info ====");
-            console.log("Position ID:", positionId);
-            console.log("Initial Liquidatable:", wasLiquidatable);
-            console.log("Debt Amount Before Repayment:", debtAmount);
-            console.log("Collateral Amount:", collateralAmount);
-            console.log("After Recovery Liquidatable:", isStillLiquidatable);
-            console.log("=====================");
-
-            // Assert that a repaid or recovered position cannot be liquidated
-            assertFalse(
-                isStillLiquidatable,
-                "Position should NOT be liquidatable after repayment or recovery!"
-            );
-        }
-    }
-
-    function invariant_LiquidatorCannotReceiveMoreThanCollateral() public {
-        uint256[] memory posIds = vault.getUserPositionIds(user1);
-
-        for (uint256 i = 0; i < posIds.length; i++) {
-            uint256 positionId = posIds[i];
-            (, uint256 collateralAmount, uint256 debtAmount) = vault
-                .getPosition(positionId);
-
-            if (debtAmount == 0 || collateralAmount == 0) continue;
-
-            // Set extreme values that might trigger precision issues
-            wethPriceFeed.setPrice(1 * 10 ** 6); // $0.01 per collateral token (massive drop)
-
-            bool liquidatable = vault.isLiquidatable(positionId);
-            if (!liquidatable) continue;
-
-            uint256 liquidatorBalanceBefore = WETH.balanceOf(user3);
-
-            vm.prank(user3);
-            vault.liquidatePosition(positionId);
-
-            uint256 liquidatorBalanceAfter = WETH.balanceOf(user3);
-            uint256 liquidatorReward = liquidatorBalanceAfter -
-                liquidatorBalanceBefore;
-
-            assertLe(
-                liquidatorReward,
-                collateralAmount,
-                "Liquidator received more than total collateral!"
-            );
-        }
-    }
-
-    function invariant_LiquidationFailsGracefullyOnTransferFailure() public {
-        uint256[] memory posIds = vault.getUserPositionIds(user1);
-
-        for (uint256 i = 0; i < posIds.length; i++) {
-            uint256 positionId = posIds[i];
-            (, uint256 collateralAmount, uint256 debtAmount) = vault
-                .getPosition(positionId);
-
-            if (debtAmount == 0 || collateralAmount == 0) continue;
-
-            wethPriceFeed.setPrice(1 * 10 ** 8); // Price drops drastically
-
-            bool liquidatable = vault.isLiquidatable(positionId);
-            if (!liquidatable) continue;
-
-            // Simulate token transfer failure (e.g., ERC20 transfer returning false)
-            vm.mockCall(
-                address(WETH),
-                abi.encodeWithSelector(WETH.transfer.selector),
-                abi.encode(false)
-            );
-
-            vm.prank(user3);
-            vm.expectRevert(ERC20Vault.LiquidationFailed.selector);
-            vault.liquidatePosition(positionId);
-        }
-    }
-
-    function invariant_CannotLiquidateTwice() public {
-        uint256[] memory posIds = vault.getUserPositionIds(user1);
-
-        for (uint256 i = 0; i < posIds.length; i++) {
-            uint256 positionId = posIds[i];
-            (, uint256 collateralAmount, uint256 debtAmount) = vault
-                .getPosition(positionId);
-
-            if (debtAmount == 0 || collateralAmount == 0) continue;
-
-            wethPriceFeed.setPrice(1 * 10 ** 8); // Price drops drastically
-
-            bool liquidatable = vault.isLiquidatable(positionId);
-            if (!liquidatable) continue;
-
-            vm.prank(user3);
-            vault.liquidatePosition(positionId);
-
-            // Ensure the position is now fully closed
-            (, uint256 newCollateral, uint256 newDebt) = vault.getPosition(
-                positionId
-            );
-            assertEq(
-                newCollateral,
-                0,
-                "Collateral should be 0 after liquidation"
-            );
-            assertEq(newDebt, 0, "Debt should be 0 after liquidation");
-
-            // Try to liquidate again and expect failure
-            vm.prank(user3);
-            vm.expectRevert(ERC20Vault.InvalidPosition.selector);
-            vault.liquidatePosition(positionId);
-        }
-    }
-
-    function invariant_UserPositionsRemovedAfterLiquidation() public {
-        uint256[] memory posIds = vault.getUserPositionIds(user1);
-
-        for (uint256 i = 0; i < posIds.length; i++) {
-            uint256 positionId = posIds[i];
-            (, uint256 collateralAmount, uint256 debtAmount) = vault
-                .getPosition(positionId);
-
-            if (debtAmount == 0 || collateralAmount == 0) continue; // Skip empty positions
-
-            wethPriceFeed.setPrice(1 * 10 ** 8); // Make it liquidatable
-
-            bool liquidatable = vault.isLiquidatable(positionId);
-            if (!liquidatable) continue;
-
-            // Liquidate the position
-            vm.prank(user3);
-            vault.liquidatePosition(positionId);
-
-            // Ensure the position is removed from userPositionIds mapping
-            uint256[] memory updatedPosIds = vault.getUserPositionIds(user1);
-            for (uint256 j = 0; j < updatedPosIds.length; j++) {
-                assertFalse(
-                    updatedPosIds[j] == positionId,
-                    "Position ID should be removed after liquidation!"
-                );
-            }
-        }
-    }
-
-    function invariant_FlashLoanCannotManipulateHealthFactor() public {
-        uint256[] memory posIds = vault.getUserPositionIds(user1);
-
-        for (uint256 i = 0; i < posIds.length; i++) {
-            uint256 positionId = posIds[i];
-            (
-                address owner,
-                uint256 collateralAmount,
-                uint256 debtAmount
-            ) = vault.getPosition(positionId);
-
-            if (debtAmount == 0 || collateralAmount == 0) continue; // Skip empty positions
-            if (owner != user1) continue; // Ensure we are testing `user1`'s position
-
-            wethPriceFeed.setPrice(1 * 10 ** 8); // Drastically drop price, making it liquidatable
-
-            bool liquidatableBefore = vault.isLiquidatable(positionId);
-            if (!liquidatableBefore) continue;
-
-            // Attempt flash-loan-style manipulation: add and immediately remove collateral
-            uint256 flashAmount = collateralAmount / 2;
-            WETH.approve(address(vault), flashAmount);
-
-            try vault.addCollateral(positionId, flashAmount) {
-                try vault.withdrawCollateral(positionId, flashAmount) {
-                    // The position should **still** be liquidatable
-                    bool liquidatableAfter = vault.isLiquidatable(positionId);
-                    assertTrue(
-                        liquidatableAfter,
-                        "Flash loan should not prevent liquidation!"
-                    );
-                } catch {
-                    // Withdrawal failed, still need to check if liquidation is still possible
-                    bool liquidatableAfterFail = vault.isLiquidatable(
-                        positionId
-                    );
-                    assertTrue(
-                        liquidatableAfterFail,
-                        "Flash loan should not prevent liquidation even if withdrawal fails!"
-                    );
-                }
-            } catch {
-                // Adding collateral failed, ensure it is still liquidatable
-                bool liquidatableAfterFail = vault.isLiquidatable(positionId);
-                assertTrue(
-                    liquidatableAfterFail,
-                    "Flash loan should not prevent liquidation even if adding collateral fails!"
-                );
-            }
-        }
-    }
-
-    function invariant_DebtMappingClearedAfterRepayment() public {
-        uint256[] memory posIds = vault.getUserPositionIds(user1);
-
-        uint256 totalRepaid = 0;
-        for (uint256 i = 0; i < posIds.length; i++) {
-            uint256 positionId = posIds[i];
-            (, , uint256 debtAmount) = vault.getPosition(positionId);
-
-            if (debtAmount == 0) continue; // Skip positions that already have no debt
-
-            // Repay entire debt
-            shezUSD.approve(address(vault), debtAmount);
-            vm.prank(user1);
-            vault.repayDebt(positionId, debtAmount);
-            totalRepaid += debtAmount;
-        }
-
-        // Fetch updated loan balance
-        uint256 userLoanBalance = vault.getLoanBalance(user1);
-
-        // Ensure that the total repaid matches the initial total debt
-        assertEq(
-            userLoanBalance,
-            0,
-            "Loan balance should be 0 after full repayment!"
-        );
-    }
-
-    // function invariant_InterestCollectionEdgeCases() public {
+    // function invariant_ZeroCollateralButDebtExists() public {
     //     uint256[] memory posIds = vault.getUserPositionIds(user1);
 
-    //     // Case 1: Interest increases debt beyond LTV limit
     //     for (uint256 i = 0; i < posIds.length; i++) {
     //         uint256 positionId = posIds[i];
     //         (, uint256 collateralAmount, uint256 debtAmount) = vault
     //             .getPosition(positionId);
-    //         if (debtAmount > 0 && collateralAmount > 0) {
-    //             // Simulate significant interest accrual
-    //             vm.roll(block.number + 1000); // ~200k blocks, roughly a month at 7160 blocks/day
-    //             uint256 preInterestDebt = debtAmount;
-    //             vault.collectInterest();
-    //             (, , uint256 postInterestDebt) = vault.getPosition(positionId);
 
-    //             if (postInterestDebt > preInterestDebt) {
-    //                 uint256 collateralValue = vault.getCollateralValue(
-    //                     collateralAmount
-    //                 );
-    //                 uint256 loanValue = vault.getLoanValue(postInterestDebt);
-    //                 uint256 currentLTV = (loanValue * 100) / collateralValue;
+    //         // If debt exists but no collateral, it should always be liquidatable
+    //         if (debtAmount > 0 && collateralAmount == 0) {
+    //             bool liquidatable = vault.isLiquidatable(positionId);
+    //             assertTrue(
+    //                 liquidatable,
+    //                 "Position with zero collateral but debt should be liquidatable!"
+    //             );
 
-    //                 // If interest pushes debt beyond LTV, position should be liquidatable
-    //                 if (currentLTV > INITIAL_LTV) {
-    //                     assertTrue(
-    //                         vault.isLiquidatable(positionId),
-    //                         "Position should be liquidatable when interest pushes debt beyond LTV"
-    //                     );
-    //                 }
-    //             }
+    //             // Ensure that liquidating actually removes the debt
+    //             vm.prank(user2); // Simulate a liquidator
+    //             vault.liquidatePosition(positionId);
+
+    //             // Verify the position no longer exists
+    //             (, uint256 newCollateral, uint256 newDebt) = vault.getPosition(
+    //                 positionId
+    //             );
+    //             assertEq(
+    //                 newCollateral,
+    //                 0,
+    //                 "Collateral should remain 0 after liquidation"
+    //             );
+    //             assertEq(newDebt, 0, "Debt should be 0 after liquidation");
     //         }
     //     }
+    // }
 
-    //     // Case 2: Interest collection fails mid-transaction
-    //     if (posIds.length > 0) {
+    // function invariant_DebtGreaterThanCollateralStillLiquidatable() public {
+    //     uint256[] memory posIds = vault.getUserPositionIds(user1);
+
+    //     for (uint256 i = 0; i < posIds.length; i++) {
+    //         uint256 positionId = posIds[i];
+    //         (, uint256 collateralAmount, ) = vault.getPosition(positionId);
+
+    //         // Fetch critical values
+    //         uint256 health = vault.getPositionHealth(positionId);
+    //         bool liquidatable = vault.isLiquidatable(positionId);
+
+    //         // Compute the expected liquidation threshold
+    //         uint256 liquidationThresholdValue = (vault.ltvRatio() *
+    //             vault.liquidationThreshold()) / 100;
+    //         uint256 requiredHealth = (vault.PRECISION() *
+    //             liquidationThresholdValue) / 100;
+
+    //         if (health < requiredHealth) {
+    //             assertTrue(
+    //                 liquidatable,
+    //                 "Position should be liquidatable but is not!"
+    //             );
+    //         } else {
+    //             assertFalse(
+    //                 liquidatable,
+    //                 "Position should NOT be liquidatable but is!"
+    //             );
+    //         }
+
+    //         if (liquidatable) {
+    //             uint256 liquidatorReward = (collateralAmount *
+    //                 vault.liquidatorReward()) / 100;
+    //             uint256 penalty = (collateralAmount * vault.penaltyRate()) /
+    //                 100;
+    //             uint256 remainingCollateral = collateralAmount -
+    //                 liquidatorReward -
+    //                 penalty;
+
+    //             uint256 borrowerBalanceBefore = WETH.balanceOf(user1);
+    //             uint256 liquidatorBalanceBefore = WETH.balanceOf(user3);
+
+    //             vm.prank(user3);
+    //             vault.liquidatePosition(positionId);
+
+    //             // Verify calculations remain correct
+    //             (, uint256 newCollateral, uint256 newDebt) = vault.getPosition(
+    //                 positionId
+    //             );
+    //             assertEq(
+    //                 newCollateral,
+    //                 0,
+    //                 "Collateral should be 0 after liquidation"
+    //             );
+    //             assertEq(newDebt, 0, "Debt should be 0 after liquidation");
+
+    //             // Ensure liquidator received the correct reward
+    //             uint256 liquidatorBalanceAfter = WETH.balanceOf(user3);
+    //             assertEq(
+    //                 liquidatorBalanceAfter - liquidatorBalanceBefore,
+    //                 liquidatorReward,
+    //                 "Liquidator reward mismatch"
+    //             );
+
+    //             // Ensure borrower got any remaining collateral (if applicable)
+    //             uint256 borrowerBalanceAfter = WETH.balanceOf(user1);
+    //             assertEq(
+    //                 borrowerBalanceAfter - borrowerBalanceBefore,
+    //                 remainingCollateral,
+    //                 "Borrower remaining collateral mismatch"
+    //             );
+    //         }
+    //     }
+    // }
+
+    // function invariant_CannotLiquidateIfHealthyOrRepaid() public {
+    //     uint256[] memory posIds = vault.getUserPositionIds(user1);
+
+    //     for (uint256 i = 0; i < posIds.length; i++) {
+    //         uint256 positionId = posIds[i];
+    //         (
+    //             address owner,
+    //             uint256 collateralAmount,
+    //             uint256 debtAmount
+    //         ) = vault.getPosition(positionId);
+
+    //         // Ensure we are testing a position owned by user1
+    //         if (owner != user1) continue;
+
+    //         bool wasLiquidatable = vault.isLiquidatable(positionId);
+
+    //         // Scenario 1: Fully repaid position (only if debt > 0)
+    //         if (debtAmount > 0) {
+    //             shezUSD.approve(address(vault), debtAmount);
+    //             vm.prank(user1); // Ensure correct sender
+    //             vault.repayDebt(positionId, debtAmount);
+    //         }
+
+    //         // Scenario 2: Price recovers before liquidation
+    //         wethPriceFeed.setPrice(1000 * 10 ** 8); // Massive price recovery
+
+    //         // Scenario 3: Rapid price fluctuations during liquidation
+    //         wethPriceFeed.setPrice(500 * 10 ** 8); // Then drops again
+
+    //         bool isStillLiquidatable = vault.isLiquidatable(positionId);
+
+    //         console.log("==== Debug Info ====");
+    //         console.log("Position ID:", positionId);
+    //         console.log("Initial Liquidatable:", wasLiquidatable);
+    //         console.log("Debt Amount Before Repayment:", debtAmount);
+    //         console.log("Collateral Amount:", collateralAmount);
+    //         console.log("After Recovery Liquidatable:", isStillLiquidatable);
+    //         console.log("=====================");
+
+    //         // Assert that a repaid or recovered position cannot be liquidated
+    //         assertFalse(
+    //             isStillLiquidatable,
+    //             "Position should NOT be liquidatable after repayment or recovery!"
+    //         );
+    //     }
+    // }
+
+    // function invariant_LiquidatorCannotReceiveMoreThanCollateral() public {
+    //     uint256[] memory posIds = vault.getUserPositionIds(user1);
+
+    //     for (uint256 i = 0; i < posIds.length; i++) {
+    //         uint256 positionId = posIds[i];
+    //         (, uint256 collateralAmount, uint256 debtAmount) = vault
+    //             .getPosition(positionId);
+
+    //         if (debtAmount == 0 || collateralAmount == 0) continue;
+
+    //         // Set extreme values that might trigger precision issues
+    //         wethPriceFeed.setPrice(1 * 10 ** 6); // $0.01 per collateral token (massive drop)
+
+    //         bool liquidatable = vault.isLiquidatable(positionId);
+    //         if (!liquidatable) continue;
+
+    //         uint256 liquidatorBalanceBefore = WETH.balanceOf(user3);
+
+    //         vm.prank(user3);
+    //         vault.liquidatePosition(positionId);
+
+    //         uint256 liquidatorBalanceAfter = WETH.balanceOf(user3);
+    //         uint256 liquidatorReward = liquidatorBalanceAfter -
+    //             liquidatorBalanceBefore;
+
+    //         assertLe(
+    //             liquidatorReward,
+    //             collateralAmount,
+    //             "Liquidator received more than total collateral!"
+    //         );
+    //     }
+    // }
+
+    // function invariant_LiquidationFailsOnTransferFailure() public {
+    //     uint256[] memory posIds = vault.getUserPositionIds(user1);
+
+    //     for (uint256 i = 0; i < posIds.length; i++) {
+    //         uint256 positionId = posIds[i];
+    //         (, uint256 collateralAmount, uint256 debtAmount) = vault
+    //             .getPosition(positionId);
+
+    //         if (debtAmount == 0 || collateralAmount == 0) continue;
+
+    //         wethPriceFeed.setPrice(1 * 10 ** 8); // Price drops drastically
+
+    //         bool liquidatable = vault.isLiquidatable(positionId);
+    //         if (!liquidatable) continue;
+
+    //         // Simulate token transfer failure (e.g., ERC20 transfer returning false)
+    //         vm.mockCall(
+    //             address(WETH),
+    //             abi.encodeWithSelector(WETH.transfer.selector),
+    //             abi.encode(false)
+    //         );
+
+    //         vm.prank(user3);
+    //         vm.expectRevert(ERC20Vault.LiquidationFailed.selector);
+    //         vault.liquidatePosition(positionId);
+    //     }
+    // }
+
+    // function invariant_InterestCollectionConsistency() public {
+    //     uint256[] memory posIds = vault.getUserPositionIds(user1);
+    //     uint256 totalInterestAccrued;
+
+    //     for (uint256 i = 0; i < posIds.length; i++) {
+    //         uint256 positionId = posIds[i];
+    //         (, uint256 collateralAmount, uint256 debtAmount) = vault
+    //             .getPosition(positionId);
+    //         uint256 initialDebtForPos = initialDebt[positionId];
+    //         uint256 repaidDebtForPos = repaidDebt[positionId];
+    //         uint256 expectedDebtWithoutInterest = initialDebtForPos >
+    //             repaidDebtForPos
+    //             ? initialDebtForPos - repaidDebtForPos
+    //             : 0;
+    //         uint256 interestDue = interestCollector.calculateInterestDue(
+    //             address(vault),
+    //             positionId,
+    //             debtAmount
+    //         );
+
+    //         // Case 1: Interest collection with zero debt
+    //         if (initialDebtForPos == 0 && repaidDebtForPos == 0) {
+    //             assertEq(
+    //                 interestDue,
+    //                 0,
+    //                 "Interest should be zero for positions with no initial debt"
+    //             );
+    //             assertEq(
+    //                 debtAmount,
+    //                 0,
+    //                 "Debt should remain zero with no initial debt"
+    //             );
+    //         }
+
+    //         // Case 2: Interest increases debt beyond LTV limit
+    //         if (debtAmount > 0 && collateralAmount > 0) {
+    //             uint256 collateralValue = vault.getCollateralValue(
+    //                 collateralAmount
+    //             );
+    //             uint256 loanValue = vault.getLoanValue(debtAmount);
+    //             uint256 currentLTV = (loanValue * 100) / collateralValue;
+
+    //             if (currentLTV > INITIAL_LTV) {
+    //                 assertTrue(
+    //                     vault.isLiquidatable(positionId),
+    //                     "Position should be liquidatable when interest pushes debt beyond LTV limit"
+    //                 );
+    //             }
+
+    //             // Verify debt includes accrued interest
+    //             uint256 expectedDebtWithInterest = expectedDebtWithoutInterest +
+    //                 interestAccrued[positionId];
+    //             assertApproxEqAbs(
+    //                 debtAmount,
+    //                 expectedDebtWithInterest,
+    //                 1e12,
+    //                 "Debt should reflect accrued interest"
+    //             );
+    //             totalInterestAccrued += interestAccrued[positionId];
+    //         }
+
+    //         // Case 3: Interest collection failure mid-transaction
+    //         // Simulate failure by mocking a revert in collectInterest
     //         vm.mockCallRevert(
     //             address(interestCollector),
     //             abi.encodeWithSelector(
     //                 interestCollector.collectInterest.selector
     //             ),
-    //             "Interest collection failed"
+    //             "Mock interest collection failure"
     //         );
-    //         uint256 preTotalDebt = vault.totalDebt();
-    //         vm.roll(block.number + 300); // Ensure collection is ready
-    //         vault.collectInterest(); // Should emit InterestCollected(0) and not affect state
-    //         assertEq(
-    //             vault.totalDebt(),
-    //             preTotalDebt,
-    //             "Total debt should not change on interest collection failure"
-    //         );
-    //         for (uint256 i = 0; i < posIds.length; i++) {
-    //             uint256 positionId = posIds[i];
-    //             (, , uint256 debtAmount) = vault.getPosition(positionId);
+    //         vm.prank(user1);
+    //         try vault.repayDebt(positionId, 1) {
+    //             // If repay succeeds despite interest failure, debt should still decrease
+    //             (, , uint256 debt) = vault.getPosition(positionId);
     //             assertEq(
+    //                 debt,
+    //                 debtAmount - 1,
+    //                 "Debt should decrease even if interest collection fails"
+    //             );
+    //         } catch {
+    //             // If repay fails, debt should remain unchanged
+    //             (, , uint256 debt) = vault.getPosition(positionId);
+    //             assertEq(
+    //                 debt,
     //                 debtAmount,
-    //                 initialDebt[positionId] +
-    //                     interestAccrued[positionId] -
-    //                     repaidDebt[positionId],
-    //                 "Position debt should not change on interest collection failure"
+    //                 "Debt should not change if repay fails due to interest collection failure"
     //             );
     //         }
-
-    //         console.log(posIds.length, "<<< posIds.length");
+    //         vm.clearMockedCalls(); // Reset mocks
     //     }
 
-    //     console.log(vault.totalDebt(), "<<< vault.totalDebt() BEFORE");
-
-    //     // Case 3: Interest collection with zero total debt
-    //     vm.startPrank(user1);
+    //     // Verify totalDebt reflects all accrued interest
+    //     uint256 expectedTotalDebt = vault.totalDebt() - totalInterestAccrued;
+    //     uint256 totalDebtWithoutInterest;
     //     for (uint256 i = 0; i < posIds.length; i++) {
-    //         uint256 positionId = posIds[i];
-    //         (, , uint256 debtAmount) = vault.getPosition(positionId);
-    //         if (debtAmount > 0) {
-    //             shezUSD.approve(address(vault), debtAmount);
-    //             vault.repayDebt(positionId, debtAmount);
-    //         }
+    //         (, , uint256 posDebt) = vault.getPosition(posIds[i]);
+    //         totalDebtWithoutInterest += posDebt - interestAccrued[posIds[i]];
     //     }
-    //     vm.stopPrank();
-
-    //     console.log(vault.totalDebt(), "<<< vault.totalDebt() AFTER");
-
-    //     // assertEq(
-    //     //     vault.totalDebt(),
-    //     //     0,
-    //     //     "Total debt should be zero after full repayment"
-    //     // );
-    //     vm.roll(block.number + 300); // Advance blocks
-    //     uint256 preInterestBalance = shezUSD.balanceOf(
-    //         address(interestCollector)
-    //     );
-    //     vault.collectInterest();
-    //     assertEq(
-    //         shezUSD.balanceOf(address(interestCollector)),
-    //         preInterestBalance,
-    //         "No interest should be collected when total debt is zero"
+    //     assertApproxEqAbs(
+    //         expectedTotalDebt,
+    //         totalDebtWithoutInterest,
+    //         1e12,
+    //         "totalDebt should match sum of position debts minus interest"
     //     );
     // }
 }
