@@ -54,7 +54,6 @@ contract ERC20VaultTest is Test {
         // wethPriceFeed = IPriceFeed(0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419);
         wethPriceFeed = new MockPriceFeed(200 * 10 ** 8, 8); // $200
         shezUSDPriceFeed = new MockPriceFeed(100 * 10 ** 8, 8); // $100
-        interestCollector = new InterestCollector(treasury);
 
         vault = new ERC20Vault(
             address(WETH),
@@ -65,6 +64,7 @@ contract ERC20VaultTest is Test {
             address(wethPriceFeed),
             address(shezUSDPriceFeed)
         );
+        interestCollector = new InterestCollector(treasury);
 
         vault.setInterestCollector(address(interestCollector));
         vault.toggleInterestCollection(true);
@@ -1107,15 +1107,25 @@ contract ERC20VaultTest is Test {
         assertEq(pos3Debt, debtAmount, "Position 3 debt should be intact");
     }
 
-    function test_CollectInterestManually() public {
-        vm.roll(block.number + 300);
+    function test_InterestCollectorDeployment() public view {
+        assertEq(interestCollector.treasury(), treasury);
+        assertEq(interestCollector.blocksPerYear(), 7160 * 365);
+        assertEq(interestCollector.periodBlocks(), 300);
+    }
 
+    function test_CollectInterestManually() public {
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
         vault.openPosition(address(WETH), 1000 ether, 500 ether);
         vm.stopPrank();
 
-        uint256 due = interestCollector.getCollectedInterest(address(shezUSD));
+        vm.roll(block.number + 300);
+
+        uint256 due = interestCollector.calculateInterestDue(
+            address(vault),
+            1,
+            500 ether
+        );
         assertGt(due, 0, "Interest should be due after block advance");
     }
 
@@ -1133,33 +1143,27 @@ contract ERC20VaultTest is Test {
         vm.stopPrank();
     }
 
-    function test_GetPendingInterestNoCollector() public {
-        vm.startPrank(deployer);
-        vault.setInterestCollector(address(0));
-        assertEq(
-            vault.getPendingInterest(),
-            0,
-            "Pending interest should be 0 with no collector"
-        );
-        vm.stopPrank();
-    }
+    // function test_GetPendingInterestNoCollector() public {
+    //     vm.startPrank(deployer);
+    //     vault.setInterestCollector(address(0));
+    //     assertEq(
+    //         vault.getPendingInterest(),
+    //         0,
+    //         "Pending interest should be 0 with no collector"
+    //     );
+    //     vm.stopPrank();
+    // }
 
-    function test_GetPendingInterestDisabled() public {
-        vm.startPrank(deployer);
-        vault.toggleInterestCollection(false);
-        assertEq(
-            vault.getPendingInterest(),
-            0,
-            "Pending interest should be 0 when disabled"
-        );
-        vm.stopPrank();
-    }
-
-    function test_InterestCollectorDeployment() public view {
-        assertEq(interestCollector.treasury(), treasury);
-        assertEq(interestCollector.blocksPerYear(), 7160 * 365);
-        assertEq(interestCollector.periodBlocks(), 300);
-    }
+    // function test_GetPendingInterestDisabled() public {
+    //     vm.startPrank(deployer);
+    //     vault.toggleInterestCollection(false);
+    //     assertEq(
+    //         vault.getPendingInterest(),
+    //         0,
+    //         "Pending interest should be 0 when disabled"
+    //     );
+    //     vm.stopPrank();
+    // }
 
     function test_RegisterVault() public {
         vm.startPrank(deployer);
@@ -1195,18 +1199,6 @@ contract ERC20VaultTest is Test {
     }
 
     function test_CollectInterestNotReady() public {
-        vm.prank(address(vault));
-        interestCollector.collectInterest(
-            address(vault),
-            address(shezUSD),
-            500 ether
-        ); // Not ready yet
-        assertEq(interestCollector.getCollectedInterest(address(shezUSD)), 0);
-    }
-
-    function test_WithdrawInterest() public {
-        vm.roll(block.number + 300);
-
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
         vault.openPosition(address(WETH), 1000 ether, 500 ether);
@@ -1216,6 +1208,25 @@ contract ERC20VaultTest is Test {
         interestCollector.collectInterest(
             address(vault),
             address(shezUSD),
+            1,
+            500 ether
+        ); // Not ready yet
+        assertEq(interestCollector.getCollectedInterest(address(shezUSD)), 0);
+    }
+
+    function test_WithdrawInterest() public {
+        vm.startPrank(user1);
+        WETH.approve(address(vault), 1000 ether);
+        vault.openPosition(address(WETH), 1000 ether, 500 ether);
+        vm.stopPrank();
+
+        vm.roll(block.number + 300);
+
+        vm.prank(address(vault));
+        interestCollector.collectInterest(
+            address(vault),
+            address(shezUSD),
+            1,
             500 ether
         );
 
@@ -1231,11 +1242,12 @@ contract ERC20VaultTest is Test {
         vault.openPosition(address(WETH), 1000 ether, 500 ether);
         vm.stopPrank();
 
-        vm.roll(block.number + 301);
+        vm.roll(block.number + 300);
         vm.prank(address(vault));
         interestCollector.collectInterest(
             address(vault),
             address(shezUSD),
+            1,
             500 ether
         );
 
@@ -1269,27 +1281,42 @@ contract ERC20VaultTest is Test {
     }
 
     function test_IsCollectionReady() public {
-        assertFalse(interestCollector.isCollectionReady(address(vault)));
+        assertFalse(interestCollector.isCollectionReady(address(vault), 1));
+
+        vm.startPrank(user1);
+        WETH.approve(address(vault), 1000 ether);
+        vault.openPosition(address(WETH), 1000 ether, 500 ether);
+        vm.stopPrank();
+
         vm.roll(block.number + 300);
-        assertTrue(interestCollector.isCollectionReady(address(vault)));
+
+        assertTrue(interestCollector.isCollectionReady(address(vault), 1));
     }
 
     function test_CalculateInterestDueEdgeCases() public {
         vm.startPrank(deployer);
-        assertEq(
-            interestCollector.getCollectedInterest(address(vault)),
-            0
-        ); // No rate set
+        assertEq(interestCollector.getCollectedInterest(address(vault)), 0); // No rate set
+
+        vm.startPrank(user1);
+        WETH.approve(address(vault), 1000 ether);
+        vault.openPosition(address(WETH), 1000 ether, 500 ether);
+        vm.stopPrank();
 
         vm.roll(block.number + 299); // Less than periodBlocks
+
         assertEq(
-            interestCollector.calculateInterestDue(address(vault), 500 ether),
+            interestCollector.calculateInterestDue(
+                address(vault),
+                1,
+                500 ether
+            ),
             0
         );
 
         vm.roll(block.number + 1); // Exactly one period
         uint256 interest = interestCollector.calculateInterestDue(
             address(vault),
+            1,
             500 ether
         );
         assertGt(interest, 0);

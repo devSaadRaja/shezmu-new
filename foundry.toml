@@ -2,9 +2,10 @@
 src = "src"
 out = "out"
 libs = ["lib"]
+via_ir = true
 
 [invariant]
-runs = 256
+runs = 500
 depth = 15
 show_metrics = true
 fail_on_revert = true

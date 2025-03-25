@@ -5,28 +5,9 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
+import {EERC20} from "./interfaces/EERC20.sol";
 import {IPriceFeed} from "./interfaces/IPriceFeed.sol";
-
-interface EERC20 is IERC20 {
-    function mint(address account, uint256 value) external;
-
-    function burn(address account, uint256 value) external;
-}
-
-interface IInterestCollector {
-    function collectInterest(
-        address vault,
-        address token,
-        uint256 debtAmount
-    ) external;
-
-    function calculateInterestDue(
-        address vault,
-        uint256 debtAmount
-    ) external view returns (uint256);
-
-    function isCollectionReady(address vault) external view returns (bool);
-}
+import {IInterestCollector} from "./interfaces/IInterestCollector.sol";
 
 contract ERC20Vault is ReentrancyGuard, Ownable {
     // =============================================== //
@@ -37,6 +18,7 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         address owner;
         uint256 collateralAmount;
         uint256 debtAmount;
+        uint256 lastInterestCollectionBlock;
     }
 
     IERC20 public collateralToken;
@@ -228,17 +210,17 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         return (loanAmount * loanPrice) / PRECISION;
     }
 
-    /// @notice Gets the pending interest amount that would be collected in the next collection
-    /// @return The pending interest amount
-    function getPendingInterest() public view returns (uint256) {
-        if (
-            address(interestCollector) == address(0) ||
-            !interestCollectionEnabled
-        ) {
-            return 0;
-        }
+    /// @notice Checks if a position is liquidatable
+    /// @param positionId The ID of the position to check
+    /// @return bool True if the position is liquidatable
+    function isLiquidatable(uint256 positionId) public view returns (bool) {
+        Position memory pos = positions[positionId];
+        if (pos.debtAmount == 0 || pos.collateralAmount == 0) return false;
 
-        return interestCollector.calculateInterestDue(address(this), totalDebt);
+        uint256 health = getPositionHealth(positionId);
+        uint256 liquidationThresholdValue = (ltvRatio * liquidationThreshold) /
+            100;
+        return health < ((PRECISION * liquidationThresholdValue) / 100);
     }
 
     // ===================================================== //
@@ -280,7 +262,8 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         positions[positionId] = Position(
             msg.sender,
             collateralAmount,
-            debtAmount
+            debtAmount,
+            block.number
         );
         userPositionIds[msg.sender].push(positionId);
 
@@ -291,7 +274,8 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
 
         loanToken.mint(msg.sender, debtAmount);
 
-        _collectInterestIfReady();
+        interestCollector.setLastCollectionBlock(address(this), positionId);
+        _collectInterestIfAvailable(positionId);
 
         emit PositionOpened(
             positionId,
@@ -337,7 +321,7 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
             revert AmountExceedsLoan();
         }
 
-        _collectInterestIfReady();
+        _collectInterestIfAvailable(positionId);
 
         loanToken.burn(msg.sender, debtAmount);
 
@@ -364,7 +348,7 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
             revert InsufficientCollateral();
         }
 
-        _collectInterestIfReady();
+        _collectInterestIfAvailable(positionId);
 
         uint256 newCollateralAmount = positions[positionId].collateralAmount -
             amount;
@@ -402,7 +386,7 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         if (positionOwner == address(0)) revert InvalidPosition();
         if (!isLiquidatable(positionId)) revert PositionNotLiquidatable();
 
-        _collectInterestIfReady();
+        _collectInterestIfAvailable(positionId);
 
         uint256 reward = (collateralAmount * liquidatorReward) / 100;
         uint256 penalty = (collateralAmount * penaltyRate) / 100;
@@ -438,23 +422,26 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         emit PositionLiquidated(positionId, msg.sender, reward, debtAmount);
     }
 
-    /// @notice Checks if a position is liquidatable
-    /// @param positionId The ID of the position to check
-    /// @return bool True if the position is liquidatable
-    function isLiquidatable(uint256 positionId) public view returns (bool) {
-        Position memory pos = positions[positionId];
-        if (pos.debtAmount == 0 || pos.collateralAmount == 0) return false;
+    /// @notice Mint interest amount to InterestCollector
+    /// @dev Can only be called by InterestCollector
+    /// @param positionId The ID of the position to collect interest from
+    /// @param interestAmount The interest amount to be collected
+    function collectInterest(
+        uint256 positionId,
+        uint256 interestAmount
+    ) external {
+        require(msg.sender == address(interestCollector));
 
-        uint256 health = getPositionHealth(positionId);
-        uint256 liquidationThresholdValue = (ltvRatio * liquidationThreshold) /
-            100;
-        return health < (PRECISION * liquidationThresholdValue) / 100;
-    }
+        loanToken.mint(address(interestCollector), interestAmount);
 
-    /// @notice Manually trigger interest collection
-    /// @dev Can be called by anyone, but will only collect if conditions are met
-    function collectInterest() external {
-        _collectInterestIfReady();
+        totalDebt += interestAmount;
+
+        Position storage pos = positions[positionId];
+        pos.debtAmount += interestAmount;
+        loanBalances[pos.owner] += interestAmount;
+        pos.lastInterestCollectionBlock = block.number;
+
+        emit InterestCollected(interestAmount);
     }
 
     // ===================================================== //
@@ -522,39 +509,24 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
     }
 
     /// @notice Internal function to collect interest if conditions are met
-    function _collectInterestIfReady() internal {
+    function _collectInterestIfAvailable(uint256 positionId) internal {
         if (
             address(interestCollector) == address(0) ||
             !interestCollectionEnabled
-        ) {
-            return;
-        }
+        ) return;
 
-        if (
-            interestCollector.isCollectionReady(address(this)) && totalDebt > 0
-        ) {
-            uint256 interestAmount = interestCollector.calculateInterestDue(
+        Position memory pos = positions[positionId];
+        if (pos.debtAmount == 0) return;
+
+        try
+            interestCollector.collectInterest(
                 address(this),
-                totalDebt
-            );
-
-            if (interestAmount > 0) {
-                try
-                    interestCollector.collectInterest(
-                        address(this),
-                        address(loanToken),
-                        totalDebt
-                    )
-                {
-                    loanToken.mint(address(interestCollector), interestAmount);
-                    totalDebt += interestAmount;
-
-                    emit InterestCollected(interestAmount);
-                } catch {
-                    // Continue execution even if interest collection fails
-                    emit InterestCollected(0);
-                }
-            }
+                address(loanToken),
+                positionId,
+                pos.debtAmount
+            )
+        {} catch {
+            // Continue execution even if interest collection fails
         }
     }
 }
