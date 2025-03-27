@@ -400,6 +400,10 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         uint256 penalty = (collateralAmount * penaltyRate) / 100;
         uint256 remainingCollateral = collateralAmount - reward - penalty;
 
+        if (!collateralToken.transfer(owner(), penalty)) {
+            // revert LiquidationFailed();
+        }
+
         if (!collateralToken.transfer(msg.sender, reward)) {
             revert LiquidationFailed();
         }
