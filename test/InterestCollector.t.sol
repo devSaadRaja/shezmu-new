@@ -394,4 +394,116 @@ contract InterestCollectorTest is Test {
         );
         interestCollector.updateTreasury(vm.addr(5));
     }
+
+    function test_SetPeriodBlocksSuccess() public {
+        vm.prank(deployer);
+        uint256 newPeriodBlocks = 600; // Change from 300 to 600
+        interestCollector.setPeriodBlocks(newPeriodBlocks);
+
+        assertEq(interestCollector.periodBlocks(), newPeriodBlocks);
+        uint256 expectedPeriodShare = (newPeriodBlocks * 1e18) /
+            interestCollector.blocksPerYear();
+        assertEq(interestCollector.periodShare(), expectedPeriodShare);
+    }
+
+    function test_SetPeriodBlocksNonOwner() public {
+        vm.prank(user1);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Ownable.OwnableUnauthorizedAccount.selector,
+                user1
+            )
+        );
+        interestCollector.setPeriodBlocks(600);
+    }
+
+    function test_CalculateInterestDueLessThanOnePeriod() public {
+        vm.startPrank(user1);
+        WETH.approve(address(vault), 1000 ether);
+        vault.openPosition(address(WETH), 1000 ether, 500 ether);
+        vm.stopPrank();
+
+        vm.roll(block.number + 150); // Advance 150 blocks (less than 300)
+
+        uint256 interestDue = interestCollector.calculateInterestDue(
+            address(vault),
+            1,
+            500 ether
+        );
+        assertEq(
+            interestDue,
+            0,
+            "Interest should be 0 if less than one period has passed"
+        );
+    }
+
+    function test_WithdrawInterestTransferFailed() public {
+        // First, collect some interest
+        vm.startPrank(user1);
+        WETH.approve(address(vault), 1000 ether);
+        vault.openPosition(address(WETH), 1000 ether, 500 ether);
+        vm.stopPrank();
+
+        vm.roll(block.number + 300);
+
+        vm.prank(address(vault));
+        interestCollector.collectInterest(
+            address(vault),
+            address(shezUSD),
+            1,
+            500 ether
+        );
+
+        // Mock the transfer call to fail
+        vm.mockCall(
+            address(shezUSD),
+            abi.encodeWithSelector(
+                IERC20.transfer.selector,
+                treasury,
+                interestCollector.getCollectedInterest(address(shezUSD))
+            ),
+            abi.encode(false)
+        );
+
+        vm.prank(deployer);
+        vm.expectRevert(InterestCollector.TransferFailed.selector);
+        interestCollector.withdrawInterest(address(shezUSD));
+    }
+
+    function test_CalculateInterestDueCurrentBlockEqualsLastCollection()
+        public
+    {
+        // Open a position to set lastCollectionBlock
+        vm.startPrank(user1);
+        WETH.approve(address(vault), 1000 ether);
+        vault.openPosition(address(WETH), 1000 ether, 500 ether);
+        vm.stopPrank();
+
+        // Do not advance blocks, so currentBlock == lastCollectionBlock
+        uint256 currentBlock = block.number;
+        assertEq(
+            interestCollector.getLastCollectionBlock(address(vault), 1),
+            currentBlock,
+            "Last collection block should equal current block"
+        );
+
+        // Calculate interest due
+        uint256 interestDue = interestCollector.calculateInterestDue(
+            address(vault),
+            1,
+            500 ether
+        );
+        assertEq(
+            interestDue,
+            0,
+            "Interest should be 0 when currentBlock equals lastCollectionBlock"
+        );
+    }
+
+    function test_SetLastCollectionBlockNotVault() public {
+        // Attempt to call setLastCollectionBlock from a non-vault address
+        vm.prank(user1);
+        vm.expectRevert(InterestCollector.VaultNotCaller.selector);
+        interestCollector.setLastCollectionBlock(address(vault), 1);
+    }
 }
