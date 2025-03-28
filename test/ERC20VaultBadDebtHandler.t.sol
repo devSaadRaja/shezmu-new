@@ -182,6 +182,7 @@ contract ERC20VaultInvariantTest is Test {
     address deployer = vm.addr(1);
     address user1 = vm.addr(2);
     address user2 = vm.addr(3);
+    address treasury = vm.addr(4);
 
     uint256 constant INITIAL_LTV = 50;
     uint256 constant LIQUIDATION_THRESHOLD = 110; // 110% of INITIAL_LTV
@@ -217,7 +218,8 @@ contract ERC20VaultInvariantTest is Test {
             LIQUIDATION_THRESHOLD,
             LIQUIDATOR_REWARD,
             address(wethPriceFeed),
-            address(shezUSDPriceFeed)
+            address(shezUSDPriceFeed),
+            treasury
         );
 
         WETH.transfer(user1, 2_000_000 ether);

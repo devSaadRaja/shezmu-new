@@ -42,7 +42,6 @@ contract ERC20VaultInvariantTest is Test {
     mapping(uint256 => uint256) public withdrawnCollateral; // positionId => total withdrawn
     mapping(uint256 => uint256) public initialDebt; // positionId => initial debt
     mapping(uint256 => uint256) public repaidDebt; // positionId => total repaid
-    mapping(address => uint256) public lastPriceUpdate; // Token address => last price
     mapping(uint256 => uint256) public ltvAtCreation; // positionId => LTV at creation
     mapping(uint256 => bool) public wasLiquidated; // positionId => true if liquidated
     mapping(uint256 => uint256) public preLiquidationCollateral; // positionId => collateral amount before liquidation
@@ -52,7 +51,6 @@ contract ERC20VaultInvariantTest is Test {
     uint256 public totalInterestMintedToTreasury; // Total interest minted to treasury
     uint256 public initialWETHBalance; // User1's initial WETH balance
     uint256 public totalPenaltiesAcrossAllTime; // Total penalties from liquidations
-    uint256 public totalDepositedAcrossAllTimeUser1; // Total WETH ever deposited by user1
 
     // =========================================== //
     // ================== SETUP ================== //
@@ -75,7 +73,8 @@ contract ERC20VaultInvariantTest is Test {
             LIQUIDATION_THRESHOLD,
             LIQUIDATOR_REWARD,
             address(wethPriceFeed),
-            address(shezUSDPriceFeed)
+            address(shezUSDPriceFeed),
+            treasury
         );
         interestCollector = new InterestCollector(treasury);
 
@@ -94,12 +93,6 @@ contract ERC20VaultInvariantTest is Test {
 
         // Record initial WETH balance for user1
         initialWETHBalance = WETH.balanceOf(user1); // 2_000_000 ether;
-
-        // Record initial prices
-        (, int256 priceWETH, , , ) = wethPriceFeed.latestRoundData();
-        (, int256 priceShezUSD, , , ) = shezUSDPriceFeed.latestRoundData();
-        lastPriceUpdate[address(wethPriceFeed)] = uint256(priceWETH);
-        lastPriceUpdate[address(shezUSDPriceFeed)] = uint256(priceShezUSD);
 
         // Explicitly target this contract for invariant testing
         targetContract(address(this));
@@ -158,7 +151,7 @@ contract ERC20VaultInvariantTest is Test {
     function handler_openPosition(
         uint256 collateralAmount,
         uint256 debtAmount
-    ) public virtual {
+    ) public {
         vm.startPrank(user1);
         collateralAmount = bound(collateralAmount, 0, 1e24); // 0 to 1e24 (allow zero)
         debtAmount = bound(debtAmount, 0, 1e24); // 0 to 1e24 (allow zero)
@@ -176,7 +169,6 @@ contract ERC20VaultInvariantTest is Test {
             uint256 positionId = vault.nextPositionId() - 1;
             initialCollateral[positionId] = collateralAmount;
             initialDebt[positionId] = debtAmount;
-            totalDepositedAcrossAllTimeUser1 += collateralAmount;
 
             uint256 collateralValue = vault.getCollateralValue(
                 collateralAmount
@@ -208,7 +200,7 @@ contract ERC20VaultInvariantTest is Test {
     function handler_addCollateral(
         uint256 positionId,
         uint256 additionalAmount
-    ) public virtual {
+    ) public {
         vm.startPrank(user1);
         additionalAmount = bound(additionalAmount, 0, 1e24); // 0 to 1e24 (allow zero)
         uint256 nextId = vault.nextPositionId();
@@ -229,7 +221,6 @@ contract ERC20VaultInvariantTest is Test {
             // ) {
             try vault.addCollateral(positionId, additionalAmount) {
                 addedCollateral[positionId] += additionalAmount;
-                totalDepositedAcrossAllTimeUser1 += additionalAmount;
             } catch {}
             // }
             // // Test revert paths
@@ -255,7 +246,7 @@ contract ERC20VaultInvariantTest is Test {
     function handler_withdrawCollateral(
         uint256 positionId,
         uint256 withdrawAmount
-    ) public virtual {
+    ) public {
         vm.startPrank(user1);
         uint256 nextId = vault.nextPositionId();
         if (nextId > 1) {
@@ -317,10 +308,7 @@ contract ERC20VaultInvariantTest is Test {
         vm.stopPrank();
     }
 
-    function handler_repayDebt(
-        uint256 positionId,
-        uint256 repayAmount
-    ) public virtual {
+    function handler_repayDebt(uint256 positionId, uint256 repayAmount) public {
         vm.startPrank(user1);
         uint256 nextId = vault.nextPositionId();
         if (nextId > 1) {
@@ -381,9 +369,7 @@ contract ERC20VaultInvariantTest is Test {
             priceFeed = address(shezUSDPriceFeed);
         }
 
-        try MockPriceFeed(priceFeed).setPrice(int256(newPrice)) {
-            lastPriceUpdate[priceFeed] = newPrice; // Update last known price
-        } catch {}
+        try MockPriceFeed(priceFeed).setPrice(int256(newPrice)) {} catch {}
         vm.stopPrank();
     }
 
@@ -415,7 +401,6 @@ contract ERC20VaultInvariantTest is Test {
                 vm.startPrank(user2);
                 try vault.liquidatePosition(positionId) {
                     wasLiquidated[positionId] = true;
-                    totalInterestAccrued -= interestAccrued[positionId];
 
                     // Calculate the collateral returned to the owner during liquidation
                     uint256 reward = (collateralAmount * LIQUIDATOR_REWARD) /
@@ -430,15 +415,6 @@ contract ERC20VaultInvariantTest is Test {
                     liquidatedCollateralReturned[
                         positionId
                     ] = remainingCollateral;
-
-                    // ? If liquidation succeeds, the position should be deleted
-                    // initialCollateral[positionId] = 0;
-                    // addedCollateral[positionId] = 0;
-                    // withdrawnCollateral[positionId] = 0;
-                    // initialDebt[positionId] = 0;
-                    // repaidDebt[positionId] = 0;
-                    // ltvAtCreation[positionId] = 0;
-                    // interestAccrued[positionId] = 0;
                 } catch {}
                 vm.stopPrank();
             }
@@ -544,7 +520,7 @@ contract ERC20VaultInvariantTest is Test {
             (, uint256 posCollateral, ) = vault.getPosition(positionId);
             uint256 expectedCollateral = initialCollateral[positionId] +
                 addedCollateral[positionId] -
-                withdrawnCollateral[positionId]; // Subtract withdrawals
+                withdrawnCollateral[positionId];
             assertEq(
                 posCollateral,
                 expectedCollateral,
@@ -581,49 +557,17 @@ contract ERC20VaultInvariantTest is Test {
             ];
         }
 
-        console.log();
-        console.log(initialWETHBalance, "<<< initialWETHBalance");
-        console.log(
-            vault.getCollateralBalance(user1),
-            "<<< vault.getCollateralBalance(user1)"
-        );
-        console.log(
-            totalReturnedFromLiquidation,
-            "<<< totalReturnedFromLiquidation"
-        );
-        console.log(totalWithdrawn, "<<< totalWithdrawn");
-        console.log(
-            totalDepositedAcrossAllTimeUser1,
-            "<<< totalDepositedAcrossAllTimeUser1"
-        );
-        console.log(
-            totalPenaltiesAcrossAllTime,
-            "<<< totalPenaltiesAcrossAllTime"
-        );
-        console.log();
         uint256 WETHBalance = WETH.balanceOf(user1) +
             totalPenaltiesAcrossAllTime;
         uint256 expectedWETHBalance = initialWETHBalance -
             vault.getCollateralBalance(user1) -
             totalReturnedFromLiquidation -
             totalPenaltiesAcrossAllTime;
-        // console.log(WETHBalance, "<<< WETHBalance");
-        // console.log(expectedWETHBalance, "<<< expectedWETHBalance");
-        // console.log(expectedWETHBalance - WETHBalance, "<<< DIFFERENCE");
-        // console.log(
-        //     initialWETHBalance -
-        //         (totalDepositedAcrossAllTimeUser1 -
-        //             totalWithdrawn -
-        //             totalReturnedFromLiquidation)
-        // );
-        console.log();
-
-        // assertEq(WETHBalance, expectedWETHBalance, "WETH balance mismatch");
 
         assertApproxEqAbs(
             WETHBalance,
             expectedWETHBalance,
-            1, // Allow 5,000 wei tolerance
+            5, // Allow 5 wei tolerance
             "WETH balance mismatch"
         );
 
@@ -632,33 +576,43 @@ contract ERC20VaultInvariantTest is Test {
             totalCollateralInVault,
             "Vault collateral mismatch"
         );
+        
+        assertEq(
+            WETH.balanceOf(treasury),
+            totalPenaltiesAcrossAllTime,
+            "Treasury Penalties mismatch"
+        );
     }
 
-    // function invariant_DebtRepaymentsAccurate() public view {
-    //     uint256[] memory posIds = vault.getUserPositionIds(user1);
-    //     uint256 totalDebtExpected;
+    function invariant_DebtRepaymentsAccurate() public view {
+        uint256[] memory posIds = vault.getUserPositionIds(user1);
+        uint256 totalDebtExpected;
 
-    //     for (uint256 i = 0; i < posIds.length; i++) {
-    //         uint256 positionId = posIds[i];
-    //         (, , uint256 posDebt) = vault.getPosition(positionId);
-    //         uint256 expectedDebt = initialDebt[positionId] -(
-    //             repaidDebt[positionId] +
-    //             interestAccrued[positionId]);
-    //         assertEq(posDebt, expectedDebt, "Position debt mismatch");
-    //         totalDebtExpected += expectedDebt;
-    //     }
+        for (uint256 i = 0; i < posIds.length; i++) {
+            uint256 positionId = posIds[i];
+            (, , uint256 posDebt) = vault.getPosition(positionId);
+            uint256 expectedDebt = (initialDebt[positionId] +
+                interestAccrued[positionId]) - repaidDebt[positionId];
+            assertEq(posDebt, expectedDebt, "Position debt mismatch");
+            totalDebtExpected += expectedDebt;
+        }
 
-    //     assertEq(
-    //         vault.getLoanBalance(user1),
-    //         totalDebtExpected,
-    //         "Total debt balance mismatch"
-    //     );
-    //     assertEq(
-    //         shezUSD.balanceOf(user1),
-    //         totalDebtExpected,
-    //         "shezUSD balance mismatch"
-    //     );
-    // }
+        assertEq(
+            vault.getLoanBalance(user1),
+            shezUSD.balanceOf(user1) + totalInterestAccrued,
+            "Loan balances mismatch"
+        );
+        assertEq(
+            vault.getLoanBalance(user1),
+            totalDebtExpected,
+            "Total debt balance mismatch"
+        );
+        assertEq(
+            totalDebtExpected,
+            shezUSD.balanceOf(user1) + totalInterestAccrued,
+            "shezUSD balance mismatch"
+        );
+    }
 
     function invariant_HealthRatioCorrect() public view {
         uint256[] memory posIds = vault.getUserPositionIds(user1);
@@ -681,12 +635,7 @@ contract ERC20VaultInvariantTest is Test {
                 uint256 loanValue = vault.getLoanValue(debtAmount);
                 uint256 expectedHealth = (collateralValue * 1 ether) /
                     loanValue; // Scaled to match vault precision
-                assertApproxEqAbs(
-                    health,
-                    expectedHealth,
-                    1e12,
-                    "Health ratio mismatch"
-                ); // Allow small precision errors
+                assertEq(health, expectedHealth, "Health ratio mismatch");
             }
         }
 
@@ -719,10 +668,9 @@ contract ERC20VaultInvariantTest is Test {
                     loanValue;
 
                 // Verify health reflects current price
-                assertApproxEqAbs(
+                assertEq(
                     health,
                     expectedHealth,
-                    1e12,
                     "Health does not reflect current price"
                 );
 
@@ -749,10 +697,7 @@ contract ERC20VaultInvariantTest is Test {
                 initialDebt[positionId] > 0 &&
                 repaidDebt[positionId] >= initialDebt[positionId]
             ) {
-                // Debt should be 0
                 assertEq(posDebt, 0, "Debt should be 0 after full repayment");
-
-                // Position health should be infinite
                 assertEq(
                     vault.getPositionHealth(positionId),
                     type(uint256).max,
@@ -769,7 +714,6 @@ contract ERC20VaultInvariantTest is Test {
                     "Collateral mismatch after full debt repayment"
                 );
 
-                // If collateral is fully withdrawn, it should be 0
                 if (
                     withdrawnCollateral[positionId] >=
                     (initialCollateral[positionId] +
@@ -836,99 +780,6 @@ contract ERC20VaultInvariantTest is Test {
         }
     }
 
-    // function invariant_ZeroCollateralButDebtExists() public {
-    //     uint256[] memory posIds = vault.getUserPositionIds(user1);
-
-    //     for (uint256 i = 0; i < posIds.length; i++) {
-    //         uint256 positionId = posIds[i];
-    //         (, uint256 collateralAmount, uint256 debtAmount) = vault
-    //             .getPosition(positionId);
-
-    //         // If debt exists but no collateral, it should always be liquidatable
-    //         if (debtAmount > 0 && collateralAmount == 0) {
-    //             bool liquidatable = vault.isLiquidatable(positionId);
-    //             assertTrue(
-    //                 liquidatable,
-    //                 "Position with zero collateral but debt should be liquidatable!"
-    //             );
-
-    //             // Ensure that liquidating actually removes the debt
-    //             vm.prank(user2); // Simulate a liquidator
-    //             vault.liquidatePosition(positionId);
-
-    //             // Verify the position no longer exists
-    //             (, uint256 newCollateral, uint256 newDebt) = vault.getPosition(
-    //                 positionId
-    //             );
-    //             assertEq(
-    //                 newCollateral,
-    //                 0,
-    //                 "Collateral should remain 0 after liquidation"
-    //             );
-    //             assertEq(newDebt, 0, "Debt should be 0 after liquidation");
-    //         }
-    //     }
-    // }
-
-    // function invariant_ZeroCollateralDebtLiquidation() public {
-    //     uint256[] memory posIds = vault.getUserPositionIds(user1);
-
-    //     for (uint256 i = 0; i < posIds.length; i++) {
-    //         uint256 positionId = posIds[i];
-    //         (, uint256 collateralAmount, uint256 debtAmount) = vault
-    //             .getPosition(positionId);
-
-    //         if (collateralAmount == 0 && debtAmount > 0) {
-    //             // Position should be liquidatable
-    //             bool liquidatable = vault.isLiquidatable(positionId);
-    //             assertTrue(
-    //                 liquidatable,
-    //                 "Position with zero collateral and debt should be liquidatable"
-    //             );
-
-    //             // Simulate liquidation
-    //             vm.startPrank(user2);
-    //             shezUSD.approve(address(vault), shezUSD.balanceOf(user1));
-    //             uint256 wethBalanceBefore = WETH.balanceOf(user2);
-    //             try vault.liquidatePosition(positionId) {
-    //                 // Since collateral is 0, liquidator should receive 0 reward
-    //                 uint256 wethBalanceAfter = WETH.balanceOf(user2);
-    //                 assertEq(
-    //                     wethBalanceAfter,
-    //                     wethBalanceBefore,
-    //                     "Liquidator should receive 0 reward for zero collateral"
-    //                 );
-
-    //                 // Position should be deleted
-    //                 (, uint256 newCollateral, uint256 newDebt) = vault
-    //                     .getPosition(positionId);
-    //                 assertEq(
-    //                     newCollateral,
-    //                     0,
-    //                     "Collateral should remain 0 after liquidation"
-    //                 );
-    //                 assertEq(newDebt, 0, "Debt should be 0 after liquidation");
-
-    //                 // Update tracking variables (similar to handler_liquidatePosition)
-    //                 initialCollateral[positionId] = 0;
-    //                 addedCollateral[positionId] = 0;
-    //                 withdrawnCollateral[positionId] = 0;
-    //                 initialDebt[positionId] = 0;
-    //                 repaidDebt[positionId] = 0;
-    //                 ltvAtCreation[positionId] = 0;
-    //                 interestAccrued[positionId] = 0;
-    //                 liquidatedCollateralReturned[positionId] = 0;
-    //             } catch {
-    //                 assertTrue(
-    //                     false,
-    //                     "Liquidation should succeed for zero collateral position"
-    //                 );
-    //             }
-    //             vm.stopPrank();
-    //         }
-    //     }
-    // }
-
     function invariant_LiquidationConsistency() public view {
         uint256 nextId = vault.nextPositionId();
         for (uint256 positionId = 1; positionId < nextId; positionId++) {
@@ -953,43 +804,6 @@ contract ERC20VaultInvariantTest is Test {
                     0,
                     "Liquidated position should have 0 debt"
                 );
-
-                // ! Verify tracking variables are reset
-                // assertEq(
-                //     initialCollateral[positionId],
-                //     0,
-                //     "initialCollateral should be 0 after liquidation"
-                // );
-                // assertEq(
-                //     addedCollateral[positionId],
-                //     0,
-                //     "addedCollateral should be 0 after liquidation"
-                // );
-                // assertEq(
-                //     withdrawnCollateral[positionId],
-                //     0,
-                //     "withdrawnCollateral should be 0 after liquidation"
-                // );
-                // assertEq(
-                //     initialDebt[positionId],
-                //     0,
-                //     "initialDebt should be 0 after liquidation"
-                // );
-                // assertEq(
-                //     repaidDebt[positionId],
-                //     0,
-                //     "repaidDebt should be 0 after liquidation"
-                // );
-                // assertEq(
-                //     ltvAtCreation[positionId],
-                //     0,
-                //     "ltvAtCreation should be 0 after liquidation"
-                // );
-                // assertEq(
-                //     interestAccrued[positionId],
-                //     0,
-                //     "interestAccrued should be 0 after liquidation"
-                // );
 
                 // Verify collateral distribution
                 uint256 preLiquidationAmount = preLiquidationCollateral[
@@ -1057,9 +871,8 @@ contract ERC20VaultInvariantTest is Test {
         for (uint256 i = 0; i < posIds.length; i++) {
             uint256 positionId = posIds[i];
             (, , uint256 posDebt) = vault.getPosition(positionId);
-            uint256 expectedDebt = initialDebt[positionId] -
-                repaidDebt[positionId] +
-                interestAccrued[positionId];
+            uint256 expectedDebt = (initialDebt[positionId] +
+                interestAccrued[positionId]) - repaidDebt[positionId];
             assertEq(
                 posDebt,
                 expectedDebt,

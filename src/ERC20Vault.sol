@@ -44,6 +44,8 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
     bool public interestCollectionEnabled;
     IInterestCollector public interestCollector;
 
+    address public treasury; // to receive penalty amounts
+
     // ============================================ //
     // ================== EVENTS ================== //
     // ============================================ //
@@ -71,6 +73,7 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
     // ================== ERRORS ================== //
     // ============================================ //
 
+    error ZeroAddress();
     error InvalidPosition();
     error InvalidCollateralToken();
     error InvalidLoanToken();
@@ -103,7 +106,8 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         uint256 _liquidationThreshold,
         uint256 _liquidatorReward,
         address _collateralPriceFeed,
-        address _loanPriceFeed
+        address _loanPriceFeed,
+        address _treasury
     ) Ownable(msg.sender) {
         if (_collateralToken == address(0)) revert InvalidCollateralToken();
         if (_loanToken == address(0)) revert InvalidLoanToken();
@@ -111,6 +115,7 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         if (_collateralPriceFeed == address(0))
             revert InvalidCollateralPriceFeed();
         if (_loanPriceFeed == address(0)) revert InvalidLoanPriceFeed();
+        if (_treasury == address(0)) revert ZeroAddress();
 
         collateralToken = IERC20(_collateralToken);
         loanToken = EERC20(_loanToken);
@@ -119,6 +124,7 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         liquidatorReward = _liquidatorReward;
         collateralPriceFeed = IPriceFeed(_collateralPriceFeed);
         loanPriceFeed = IPriceFeed(_loanPriceFeed);
+        treasury = _treasury;
     }
 
     // ==================================================== //
@@ -400,10 +406,9 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         uint256 penalty = (collateralAmount * penaltyRate) / 100;
         uint256 remainingCollateral = collateralAmount - reward - penalty;
 
-        if (!collateralToken.transfer(owner(), penalty)) {
-            // revert LiquidationFailed();
+        if (!collateralToken.transfer(treasury, penalty)) {
+            revert LiquidationFailed();
         }
-
         if (!collateralToken.transfer(msg.sender, reward)) {
             revert LiquidationFailed();
         }

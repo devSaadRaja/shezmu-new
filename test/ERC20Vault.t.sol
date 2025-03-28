@@ -62,7 +62,8 @@ contract ERC20VaultTest is Test {
             LIQUIDATION_THRESHOLD,
             LIQUIDATOR_REWARD,
             address(wethPriceFeed),
-            address(shezUSDPriceFeed)
+            address(shezUSDPriceFeed),
+            treasury
         );
         interestCollector = new InterestCollector(treasury);
 
@@ -596,7 +597,8 @@ contract ERC20VaultTest is Test {
             LIQUIDATION_THRESHOLD,
             LIQUIDATOR_REWARD,
             address(wethPriceFeed),
-            address(shezUSDPriceFeed)
+            address(shezUSDPriceFeed),
+            treasury
         );
 
         vm.expectRevert(ERC20Vault.InvalidLoanToken.selector);
@@ -607,7 +609,8 @@ contract ERC20VaultTest is Test {
             LIQUIDATION_THRESHOLD,
             LIQUIDATOR_REWARD,
             address(wethPriceFeed),
-            address(shezUSDPriceFeed)
+            address(shezUSDPriceFeed),
+            treasury
         );
 
         vm.expectRevert(ERC20Vault.InvalidCollateralPriceFeed.selector);
@@ -618,7 +621,8 @@ contract ERC20VaultTest is Test {
             LIQUIDATION_THRESHOLD,
             LIQUIDATOR_REWARD,
             address(0),
-            address(shezUSDPriceFeed)
+            address(shezUSDPriceFeed),
+            treasury
         );
 
         vm.expectRevert(ERC20Vault.InvalidLoanPriceFeed.selector);
@@ -629,7 +633,8 @@ contract ERC20VaultTest is Test {
             LIQUIDATION_THRESHOLD,
             LIQUIDATOR_REWARD,
             address(wethPriceFeed),
-            address(0)
+            address(0),
+            treasury
         );
         vm.stopPrank();
     }
