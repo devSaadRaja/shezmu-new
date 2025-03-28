@@ -102,7 +102,7 @@ contract ERC20VaultTest is Test {
 
         assertEq(vault.getCollateralBalance(user1), collateralAmount);
         assertEq(vault.getLoanBalance(user1), debtAmount);
-        (, uint256 posCollateral, uint256 posDebt) = vault.getPosition(1);
+        (, uint256 posCollateral, uint256 posDebt, ) = vault.getPosition(1);
         assertEq(posCollateral, collateralAmount);
         assertEq(posDebt, debtAmount);
         assertEq(shezUSD.balanceOf(user1), debtAmount);
@@ -134,7 +134,7 @@ contract ERC20VaultTest is Test {
         vault.openPosition(address(WETH), collateralAmount, debtAmount);
         vault.addCollateral(1, additionalAmount);
 
-        (, uint256 posCollateral, ) = vault.getPosition(1);
+        (, uint256 posCollateral, , ) = vault.getPosition(1);
         assertEq(posCollateral, collateralAmount + additionalAmount);
         assertEq(
             vault.getCollateralBalance(user1),
@@ -155,7 +155,7 @@ contract ERC20VaultTest is Test {
         vault.openPosition(address(WETH), collateralAmount, debtAmount);
         vault.withdrawCollateral(1, withdrawAmount);
 
-        (, uint256 posCollateral, ) = vault.getPosition(1);
+        (, uint256 posCollateral, , ) = vault.getPosition(1);
         assertEq(posCollateral, collateralAmount - withdrawAmount);
         assertEq(
             WETH.balanceOf(user1),
@@ -194,7 +194,7 @@ contract ERC20VaultTest is Test {
         shezUSD.approve(address(vault), repayAmount);
         vault.repayDebt(1, repayAmount);
 
-        (, , uint256 posDebt) = vault.getPosition(1);
+        (, , uint256 posDebt, ) = vault.getPosition(1);
         assertEq(posDebt, debtAmount - repayAmount);
         assertEq(vault.getLoanBalance(user1), debtAmount - repayAmount);
 
@@ -244,8 +244,8 @@ contract ERC20VaultTest is Test {
         vault.openPosition(address(WETH), collateral1, debt1);
         vault.openPosition(address(WETH), collateral2, debt2);
 
-        (, uint256 posCollateral1, ) = vault.getPosition(1);
-        (, uint256 posCollateral2, ) = vault.getPosition(2);
+        (, uint256 posCollateral1, , ) = vault.getPosition(1);
+        (, uint256 posCollateral2, , ) = vault.getPosition(2);
         assertEq(posCollateral1, collateral1);
         assertEq(posCollateral2, collateral2);
         assertEq(vault.getCollateralBalance(user1), collateral1 + collateral2);
@@ -262,7 +262,7 @@ contract ERC20VaultTest is Test {
         WETH.approve(address(vault), tinyCollateral);
         vault.openPosition(address(WETH), tinyCollateral, tinyDebt);
 
-        (, uint256 posCollateral, uint256 posDebt) = vault.getPosition(1);
+        (, uint256 posCollateral, uint256 posDebt, ) = vault.getPosition(1);
         assertEq(posCollateral, tinyCollateral);
         assertEq(posDebt, tinyDebt);
 
@@ -344,10 +344,10 @@ contract ERC20VaultTest is Test {
         vault.openPosition(address(WETH), 750 ether, 375 ether);
         vm.stopPrank();
 
-        (address pos1Owner, , ) = vault.getPosition(1);
-        (address pos2Owner, , ) = vault.getPosition(2);
-        (address pos3Owner, , ) = vault.getPosition(3);
-        (address pos4Owner, , ) = vault.getPosition(4);
+        (address pos1Owner, , , ) = vault.getPosition(1);
+        (address pos2Owner, , , ) = vault.getPosition(2);
+        (address pos3Owner, , , ) = vault.getPosition(3);
+        (address pos4Owner, , , ) = vault.getPosition(4);
         assertEq(pos1Owner, user1);
         assertEq(pos2Owner, user1);
         assertEq(pos3Owner, user2);
@@ -368,13 +368,13 @@ contract ERC20VaultTest is Test {
         shezUSD.approve(address(vault), debtAmount);
         vault.repayDebt(1, debtAmount);
 
-        (, , uint256 posDebt) = vault.getPosition(1);
+        (, , uint256 posDebt, ) = vault.getPosition(1);
         assertEq(posDebt, 0);
         assertEq(vault.getLoanBalance(user1), 0);
         assertEq(vault.getPositionHealth(1), type(uint256).max);
 
         vault.withdrawCollateral(1, collateralAmount);
-        (, uint256 posCollateral, ) = vault.getPosition(1);
+        (, uint256 posCollateral, , ) = vault.getPosition(1);
         assertEq(posCollateral, 0);
 
         vm.stopPrank();
@@ -829,7 +829,7 @@ contract ERC20VaultTest is Test {
         vault.liquidatePosition(positionId);
 
         // Check position state
-        (, uint256 collateral, uint256 debt) = vault.getPosition(positionId);
+        (, uint256 collateral, uint256 debt, ) = vault.getPosition(positionId);
         assertEq(collateral, 0, "Collateral should be 0 after liquidation");
         assertEq(debt, 0, "Debt should be 0 after liquidation");
 
@@ -892,7 +892,7 @@ contract ERC20VaultTest is Test {
         vault.liquidatePosition(positionId);
 
         // Verify position unchanged
-        (, uint256 collateral, uint256 debt) = vault.getPosition(positionId);
+        (, uint256 collateral, uint256 debt, ) = vault.getPosition(positionId);
         assertEq(collateral, collateralAmount, "Collateral should remain");
         assertEq(debt, debtAmount, "Debt should remain");
     }
@@ -1036,7 +1036,7 @@ contract ERC20VaultTest is Test {
         vault.liquidatePosition(positionId);
 
         // Verify position unchanged
-        (, uint256 collateral, uint256 debt) = vault.getPosition(positionId);
+        (, uint256 collateral, uint256 debt, ) = vault.getPosition(positionId);
         assertEq(collateral, collateralAmount, "Collateral should remain");
         assertEq(debt, debtAmount, "Debt should remain");
     }
@@ -1080,7 +1080,7 @@ contract ERC20VaultTest is Test {
         assertEq(userPositions[1], positionId3, "Last position should remain");
 
         // Check that position 2 is fully removed
-        (, uint256 pos2Collateral, uint256 pos2Debt) = vault.getPosition(
+        (, uint256 pos2Collateral, uint256 pos2Debt, ) = vault.getPosition(
             positionId2
         );
         assertEq(
@@ -1091,10 +1091,10 @@ contract ERC20VaultTest is Test {
         assertEq(pos2Debt, 0, "Liquidated position should have zero debt");
 
         // Verify the remaining positions are untouched
-        (, uint256 pos1Collateral, uint256 pos1Debt) = vault.getPosition(
+        (, uint256 pos1Collateral, uint256 pos1Debt, ) = vault.getPosition(
             positionId1
         );
-        (, uint256 pos3Collateral, uint256 pos3Debt) = vault.getPosition(
+        (, uint256 pos3Collateral, uint256 pos3Debt, ) = vault.getPosition(
             positionId3
         );
 
@@ -1147,28 +1147,6 @@ contract ERC20VaultTest is Test {
         vault.toggleInterestCollection(true); // Only owner can toggle
         vm.stopPrank();
     }
-
-    // function test_GetPendingInterestNoCollector() public {
-    //     vm.startPrank(deployer);
-    //     vault.setInterestCollector(address(0));
-    //     assertEq(
-    //         vault.getPendingInterest(),
-    //         0,
-    //         "Pending interest should be 0 with no collector"
-    //     );
-    //     vm.stopPrank();
-    // }
-
-    // function test_GetPendingInterestDisabled() public {
-    //     vm.startPrank(deployer);
-    //     vault.toggleInterestCollection(false);
-    //     assertEq(
-    //         vault.getPendingInterest(),
-    //         0,
-    //         "Pending interest should be 0 when disabled"
-    //     );
-    //     vm.stopPrank();
-    // }
 
     function test_RegisterVault() public {
         vm.startPrank(deployer);
@@ -1227,6 +1205,18 @@ contract ERC20VaultTest is Test {
 
         vm.roll(block.number + 300);
 
+        // Calculate interest due
+        uint256 interestDue = interestCollector.calculateInterestDue(
+            address(vault),
+            1,
+            500 ether
+        );
+
+        // User approves the vault to burn shezUSD on their behalf
+        vm.prank(user1);
+        shezUSD.approve(address(vault), interestDue);
+
+        // Collect interest
         vm.prank(address(vault));
         interestCollector.collectInterest(
             address(vault),
@@ -1235,10 +1225,22 @@ contract ERC20VaultTest is Test {
             500 ether
         );
 
+        // Verify collected interest
+        assertEq(
+            interestCollector.getCollectedInterest(address(shezUSD)),
+            interestDue,
+            "Collected interest should match calculated interest"
+        );
+
+        // Withdraw interest to treasury
         uint256 treasuryBalanceBefore = shezUSD.balanceOf(treasury);
         vm.prank(deployer);
         interestCollector.withdrawInterest(address(shezUSD));
-        assertGt(shezUSD.balanceOf(treasury), treasuryBalanceBefore);
+        assertEq(
+            shezUSD.balanceOf(treasury),
+            treasuryBalanceBefore + interestDue,
+            "Treasury should receive the collected interest"
+        );
     }
 
     function test_WithdrawInterestTransferFail() public {
@@ -1326,5 +1328,191 @@ contract ERC20VaultTest is Test {
         );
         assertGt(interest, 0);
         vm.stopPrank();
+    }
+
+    function test_InterestCollectorGetLastCollectionBlock() public {
+        vm.startPrank(user1);
+        WETH.approve(address(vault), 1000 ether);
+        uint256 currentBlock = block.number;
+        vault.openPosition(address(WETH), 1000 ether, 500 ether);
+        vm.stopPrank();
+
+        uint256 lastCollectionBlock = interestCollector.getLastCollectionBlock(
+            address(vault),
+            1
+        );
+        assertEq(
+            lastCollectionBlock,
+            currentBlock,
+            "Last collection block should match the block when position was opened"
+        );
+    }
+
+    function test_CalculateInterestDueZeroDebt() public {
+        vm.startPrank(user1);
+        WETH.approve(address(vault), 1000 ether);
+        vault.openPosition(address(WETH), 1000 ether, 500 ether);
+        shezUSD.approve(address(vault), 500 ether);
+        vault.repayDebt(1, 500 ether); // Repay all debt
+        vm.stopPrank();
+
+        vm.roll(block.number + 300);
+
+        uint256 interestDue = interestCollector.calculateInterestDue(
+            address(vault),
+            1,
+            0 // Debt amount is 0
+        );
+        assertEq(interestDue, 0, "Interest should be 0 when debt amount is 0");
+    }
+
+    function test_SetLastCollectionBlockNotVault() public {
+        vm.prank(user1);
+        vm.expectRevert(InterestCollector.VaultNotCaller.selector);
+        interestCollector.setLastCollectionBlock(address(vault), 1);
+    }
+
+    function test_CollectInterestUnregisteredVault() public {
+        vm.prank(address(user3)); // user3 is not a registered vault
+        vm.expectRevert(InterestCollector.VaultNotRegistered.selector);
+        interestCollector.collectInterest(
+            address(user3),
+            address(shezUSD),
+            1,
+            500 ether
+        );
+    }
+
+    function test_CollectInterestNotVaultCaller() public {
+        vm.startPrank(user1);
+        WETH.approve(address(vault), 1000 ether);
+        vault.openPosition(address(WETH), 1000 ether, 500 ether);
+        vm.stopPrank();
+
+        vm.roll(block.number + 300);
+
+        vm.prank(user1); // Not the vault
+        vm.expectRevert(InterestCollector.VaultNotCaller.selector);
+        interestCollector.collectInterest(
+            address(vault),
+            address(shezUSD),
+            1,
+            500 ether
+        );
+    }
+
+    function test_CollectInterestNoInterestDue() public {
+        vm.startPrank(user1);
+        WETH.approve(address(vault), 1000 ether);
+        vault.openPosition(address(WETH), 1000 ether, 500 ether);
+        vm.stopPrank();
+
+        vm.roll(block.number + 300);
+
+        vm.prank(address(vault));
+        vm.expectRevert(InterestCollector.NoInterestToCollect.selector);
+        interestCollector.collectInterest(
+            address(vault),
+            address(shezUSD),
+            1,
+            0 // Debt amount is 0
+        );
+    }
+
+    function test_GetLastCollectionBlock() public {
+        vm.startPrank(user1);
+        WETH.approve(address(vault), 1000 ether);
+        uint256 currentBlock = block.number;
+        vault.openPosition(address(WETH), 1000 ether, 500 ether);
+        uint256 positionId = vault.nextPositionId() - 1; // Ensure correct position ID
+        vm.stopPrank();
+
+        (, , , uint256 lastCollectionBlock) = vault.getPosition(positionId);
+        assertEq(
+            lastCollectionBlock,
+            currentBlock,
+            "Last collection block should match the block when position was opened"
+        );
+    }
+
+    function test_LiquidationTreasuryTransferFailure() public {
+        vm.startPrank(user1);
+        uint256 collateralAmount = 1000 ether;
+        uint256 debtAmount = 500 ether;
+        WETH.approve(address(vault), collateralAmount);
+        vault.openPosition(address(WETH), collateralAmount, debtAmount);
+        vm.stopPrank();
+
+        uint256 positionId = vault.nextPositionId() - 1;
+
+        vm.prank(deployer);
+        wethPriceFeed.setPrice(1 * 10 ** 8); // Make position liquidatable
+
+        address liquidator = user2;
+
+        // Mock the transfer to treasury to fail
+        vm.mockCall(
+            address(WETH),
+            abi.encodeWithSelector(
+                WETH.transfer.selector,
+                treasury,
+                100 ether // penalty = (1000 * 10) / 100
+            ),
+            abi.encode(false)
+        );
+
+        vm.prank(liquidator);
+        vm.expectRevert(ERC20Vault.LiquidationFailed.selector);
+        vault.liquidatePosition(positionId);
+
+        // Verify position unchanged
+        (, uint256 collateral, uint256 debt, ) = vault.getPosition(positionId);
+        assertEq(collateral, collateralAmount, "Collateral should remain");
+        assertEq(debt, debtAmount, "Debt should remain");
+    }
+
+    function test_CollectIInterestNotInterestCollector() public {
+        vm.prank(user1);
+        vm.expectRevert();
+        vault.collectInterest(1, 500 ether);
+    }
+
+    function test_CalculateInterestDueUnregisteredVault() public view {
+        uint256 interestDue = interestCollector.calculateInterestDue(
+            address(user3), // Unregistered vault
+            1,
+            500 ether
+        );
+        assertEq(
+            interestDue,
+            0,
+            "Interest should be 0 for an unregistered vault"
+        );
+    }
+
+    function test_CalculateInterestDueLastCollectionBlockZero() public view {
+        uint256 lastCollectionBlock = interestCollector.getLastCollectionBlock(
+            address(vault),
+            1
+        );
+        assertEq(lastCollectionBlock, 0, "Last collection block should be 0");
+
+        // Calculate interest due
+        uint256 interestDue = interestCollector.calculateInterestDue(
+            address(vault),
+            1,
+            500 ether
+        );
+        assertEq(
+            interestDue,
+            0,
+            "Interest should be 0 when lastCollectionBlock is 0"
+        );
+    }
+
+    function test_WithdrawInterestNoInterestCollected() public {
+        vm.prank(deployer);
+        vm.expectRevert(InterestCollector.NoInterestToCollect.selector);
+        interestCollector.withdrawInterest(address(shezUSD));
     }
 }

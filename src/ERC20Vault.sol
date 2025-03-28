@@ -136,20 +136,17 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
     /// @return owner The address of the position owner
     /// @return collateralAmount The amount of collateral in the position
     /// @return debtAmount The amount of debt in the position
+    /// @return the block number for last interest collected
     function getPosition(
         uint256 positionId
-    ) external view returns (address, uint256, uint256) {
+    ) external view returns (address, uint256, uint256, uint256) {
         Position memory position = positions[positionId];
-        return (position.owner, position.collateralAmount, position.debtAmount);
-    }
-
-    /// @notice Returns the block number for last interest collected
-    /// @param positionId The ID of the position to query
-    /// @return the block number for last interest collected
-    function getLastCollectionBlock(
-        uint256 positionId
-    ) external view returns (uint256) {
-        return positions[positionId].lastInterestCollectionBlock;
+        return (
+            position.owner,
+            position.collateralAmount,
+            position.debtAmount,
+            position.lastInterestCollectionBlock
+        );
     }
 
     /// @notice Gets the total collateral balance for a user across all positions

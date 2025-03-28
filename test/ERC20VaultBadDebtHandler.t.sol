@@ -76,7 +76,7 @@ contract BadDebtHandler {
         uint256 nextId = vault.nextPositionId();
         if (nextId > 1) {
             positionId = _bound(positionId, 1, nextId - 1);
-            (address owner, uint256 posCollateral, ) = vault.getPosition(
+            (address owner, uint256 posCollateral, , ) = vault.getPosition(
                 positionId
             );
             additionalAmount = _bound(
@@ -102,7 +102,7 @@ contract BadDebtHandler {
         uint256 nextId = vault.nextPositionId();
         if (nextId > 1) {
             positionId = _bound(positionId, 1, nextId - 1);
-            (, , uint256 posDebt) = vault.getPosition(positionId);
+            (, , uint256 posDebt, ) = vault.getPosition(positionId);
 
             repayAmount = _bound(repayAmount, 0, posDebt);
 
@@ -272,7 +272,7 @@ contract ERC20VaultInvariantTest is Test {
         uint256 totalCollateral;
         uint256 totalDebt;
         for (uint256 i = 0; i < posIds.length; i++) {
-            (, uint256 posCollateral, uint256 posDebt) = vault.getPosition(
+            (, uint256 posCollateral, uint256 posDebt, ) = vault.getPosition(
                 posIds[i]
             );
             totalCollateral += posCollateral;
@@ -287,7 +287,7 @@ contract ERC20VaultInvariantTest is Test {
         uint256[] memory posIds = vault.getUserPositionIds(user1);
         for (uint256 i = 0; i < posIds.length; i++) {
             uint256 positionId = posIds[i];
-            (, , uint256 debtAmount) = vault.getPosition(positionId);
+            (, , uint256 debtAmount, ) = vault.getPosition(positionId);
             if (debtAmount > 0) {
                 // Check LTV at the time of position creation
                 uint256 ltvAtCreationForPos = ltvAtCreation[positionId];
@@ -306,7 +306,7 @@ contract ERC20VaultInvariantTest is Test {
 
         for (uint256 i = 0; i < posIds.length; i++) {
             uint256 positionId = posIds[i];
-            (, uint256 posCollateral, ) = vault.getPosition(positionId);
+            (, uint256 posCollateral, , ) = vault.getPosition(positionId);
             uint256 expectedCollateral = initialCollateral[positionId] +
                 addedCollateral[positionId] -
                 withdrawnCollateral[positionId]; // Subtract withdrawals
@@ -332,7 +332,7 @@ contract ERC20VaultInvariantTest is Test {
 
         for (uint256 i = 0; i < posIds.length; i++) {
             uint256 positionId = posIds[i];
-            (, uint256 posCollateral, ) = vault.getPosition(positionId);
+            (, uint256 posCollateral, , ) = vault.getPosition(positionId);
             totalCollateralInVault += posCollateral;
             totalWithdrawn += withdrawnCollateral[positionId];
         }
@@ -361,7 +361,7 @@ contract ERC20VaultInvariantTest is Test {
 
         for (uint256 i = 0; i < posIds.length; i++) {
             uint256 positionId = posIds[i];
-            (, , uint256 posDebt) = vault.getPosition(positionId);
+            (, , uint256 posDebt, ) = vault.getPosition(positionId);
             uint256 expectedDebt = initialDebt[positionId] -
                 repaidDebt[positionId];
             assertEq(posDebt, expectedDebt, "Position debt mismatch");
@@ -384,7 +384,7 @@ contract ERC20VaultInvariantTest is Test {
         uint256[] memory posIds = vault.getUserPositionIds(user1);
         for (uint256 i = 0; i < posIds.length; i++) {
             uint256 positionId = posIds[i];
-            (, uint256 collateralAmount, uint256 debtAmount) = vault
+            (, uint256 collateralAmount, uint256 debtAmount, ) = vault
                 .getPosition(positionId);
             uint256 health = vault.getPositionHealth(positionId);
 
@@ -427,7 +427,7 @@ contract ERC20VaultInvariantTest is Test {
         uint256[] memory posIds = vault.getUserPositionIds(user1);
         for (uint256 i = 0; i < posIds.length; i++) {
             uint256 positionId = posIds[i];
-            (, uint256 collateralAmount, uint256 debtAmount) = vault
+            (, uint256 collateralAmount, uint256 debtAmount, ) = vault
                 .getPosition(positionId);
             if (collateralAmount > 0 && debtAmount > 0) {
                 uint256 health = vault.getPositionHealth(positionId);
@@ -460,7 +460,7 @@ contract ERC20VaultInvariantTest is Test {
         uint256[] memory posIds = vault.getUserPositionIds(user1);
         for (uint256 i = 0; i < posIds.length; i++) {
             uint256 positionId = posIds[i];
-            (, uint256 posCollateral, uint256 posDebt) = vault.getPosition(
+            (, uint256 posCollateral, uint256 posDebt, ) = vault.getPosition(
                 positionId
             );
 
@@ -528,7 +528,7 @@ contract ERC20VaultInvariantTest is Test {
 
         for (uint256 i = 0; i < posIds.length; i++) {
             uint256 positionId = posIds[i];
-            (, uint256 collateralAmount, uint256 debtAmount) = vault
+            (, uint256 collateralAmount, uint256 debtAmount, ) = vault
                 .getPosition(positionId);
             if (collateralAmount > 0 && debtAmount > 0) {
                 totalCollateralValue += vault.getCollateralValue(
