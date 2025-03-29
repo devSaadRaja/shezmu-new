@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-import {IVault} from "./interfaces/IVault.sol";
+import {IERC20Vault} from "./interfaces/IERC20Vault.sol";
 
 /**
  * @title InterestCollector
@@ -265,7 +265,7 @@ contract InterestCollector is ReentrancyGuard, Ownable {
 
         if (interestDue == 0) revert NoInterestToCollect();
 
-        IVault(vault).collectInterest(positionId, interestDue);
+        IERC20Vault(vault).collectInterest(positionId, interestDue);
 
         lastCollectionBlock[vault][positionId] = block.number;
         collectedInterest[token] += interestDue;

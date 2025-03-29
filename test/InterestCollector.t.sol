@@ -129,7 +129,7 @@ contract InterestCollectorTest is Test {
 
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
-        vault.openPosition(address(WETH), 1000 ether, debtAmount);
+        vault.openPosition(user1, address(WETH), 1000 ether, debtAmount);
         vm.stopPrank();
 
         vm.roll(block.number + 300); // Advance 1 period (300 blocks)
@@ -155,7 +155,7 @@ contract InterestCollectorTest is Test {
     function test_IsCollectionReadyAfterPeriod() public {
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
-        vault.openPosition(address(WETH), 1000 ether, 500 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
         vm.stopPrank();
 
         vm.roll(block.number + 300);
@@ -232,7 +232,7 @@ contract InterestCollectorTest is Test {
     function test_CollectInterestSuccess() public {
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
-        vault.openPosition(address(WETH), 1000 ether, 500 ether); // Creates debt
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether); // Creates debt
         vm.stopPrank();
 
         vm.roll(block.number + 300); // Advance 1 period
@@ -312,7 +312,7 @@ contract InterestCollectorTest is Test {
     function test_CollectInterestNoInterestDue() public {
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
-        vault.openPosition(address(WETH), 1000 ether, 500 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
         vm.stopPrank();
 
         vm.roll(block.number + 300);
@@ -330,7 +330,7 @@ contract InterestCollectorTest is Test {
     function test_WithdrawInterestSuccess() public {
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
-        vault.openPosition(address(WETH), 1000 ether, 500 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
         vm.stopPrank();
 
         vm.roll(block.number + 300);
@@ -420,7 +420,7 @@ contract InterestCollectorTest is Test {
     function test_CalculateInterestDueLessThanOnePeriod() public {
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
-        vault.openPosition(address(WETH), 1000 ether, 500 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
         vm.stopPrank();
 
         vm.roll(block.number + 150); // Advance 150 blocks (less than 300)
@@ -441,7 +441,7 @@ contract InterestCollectorTest is Test {
         // First, collect some interest
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
-        vault.openPosition(address(WETH), 1000 ether, 500 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
         vm.stopPrank();
 
         vm.roll(block.number + 300);
@@ -476,7 +476,7 @@ contract InterestCollectorTest is Test {
         // Open a position to set lastCollectionBlock
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
-        vault.openPosition(address(WETH), 1000 ether, 500 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
         vm.stopPrank();
 
         // Do not advance blocks, so currentBlock == lastCollectionBlock

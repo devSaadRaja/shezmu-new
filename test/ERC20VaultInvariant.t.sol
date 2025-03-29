@@ -161,11 +161,18 @@ contract ERC20VaultInvariantTest is Test {
         // // Test success path
         // if (
         //     collateralAmount > 0 &&
-        //     debtAmount > 0 &&
+        //     // debtAmount > 0 &&
         //     vault.getLoanValue(debtAmount) <=
         //     (vault.getCollateralValue(collateralAmount) * INITIAL_LTV) / 100
         // ) {
-        try vault.openPosition(address(WETH), collateralAmount, debtAmount) {
+        try
+            vault.openPosition(
+                user1,
+                address(WETH),
+                collateralAmount,
+                debtAmount
+            )
+        {
             uint256 positionId = vault.nextPositionId() - 1;
             initialCollateral[positionId] = collateralAmount;
             initialDebt[positionId] = debtAmount;

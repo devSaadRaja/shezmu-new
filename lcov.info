@@ -36,8 +36,8 @@ DA:181,18
 DA:182,18
 DA:182,18
 DA:182,18
-FN:188,ERC20Vault.getMaxBorrowable
-FNDA:2,ERC20Vault.getMaxBorrowable
+FN:188,ERC20Vault.getTotalMaxBorrowable
+FNDA:2,ERC20Vault.getTotalMaxBorrowable
 DA:189,2
 DA:189,2
 DA:190,2

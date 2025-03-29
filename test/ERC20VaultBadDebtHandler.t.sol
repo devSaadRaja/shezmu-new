@@ -60,7 +60,12 @@ contract BadDebtHandler {
             (vault.getCollateralValue(collateralAmount) * 50) / 100
         ) {
             try
-                vault.openPosition(address(WETH), collateralAmount, debtAmount)
+                vault.openPosition(
+                    user1,
+                    address(WETH),
+                    collateralAmount,
+                    debtAmount
+                )
             {
                 uint256 positionId = vault.nextPositionId() - 1;
                 initialCollateral[positionId] = collateralAmount;
