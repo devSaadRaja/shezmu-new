@@ -93,6 +93,12 @@ interface IERC20Vault {
 
     function addCollateral(uint256 positionId, uint256 amount) external;
 
+    function addCollateralFor(
+        uint256 positionId,
+        address onBehalfOf,
+        uint256 amount
+    ) external;
+
     function repayDebt(uint256 positionId, uint256 debtAmount) external;
 
     function borrow(uint256 positionId, uint256 amount) external;

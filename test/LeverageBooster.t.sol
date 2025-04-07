@@ -93,15 +93,14 @@ contract ERC20VaultTest is Test {
     // ================================================ //
 
     function test_GetMaxBorrowable() public {
-        console.log(user1, "<<< user1");
-
         vm.startPrank(user1);
 
         uint256 collateralAmount = 1000 ether; // $200,000 worth
         // uint256 debtAmount = 100 ether;
 
         WETH.approve(address(leverageBooster), collateralAmount);
-        leverageBooster.leveragePosition(collateralAmount, 3);
+        WETH.approve(address(leverageBooster), 1_000_000 ether); // ! only for testing (until uniswap v4 implementation)
+        leverageBooster.leveragePosition(collateralAmount, 4);
 
         // WETH.approve(address(vault), collateralAmount);
         // vault.openPosition(address(WETH), collateralAmount, debtAmount);

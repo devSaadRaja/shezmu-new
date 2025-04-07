@@ -197,6 +197,11 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         );
         uint256 maxLoanValue = (collateralValue * ltvRatio) / 100;
         uint256 loanPrice = _getPrice(loanPriceFeed);
+
+        console.log();
+        console.log(positions[positionId].debtAmount, "<<< loanTaken");
+        console.log((maxLoanValue * PRECISION) / loanPrice, "<<< maxLoan");
+        console.log();
         return (maxLoanValue * PRECISION) / loanPrice;
     }
 
@@ -322,18 +327,19 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         uint256 positionId,
         uint256 amount
     ) external nonReentrant {
-        if (amount == 0) revert ZeroCollateralAmount();
-        if (positions[positionId].owner != msg.sender) {
-            revert NotPositionOwner();
-        }
-        if (!collateralToken.transferFrom(msg.sender, address(this), amount)) {
-            revert CollateralTransferFailed();
-        }
+        _addCollateral(msg.sender, msg.sender, positionId, amount);
+    }
 
-        positions[positionId].collateralAmount += amount;
-        collateralBalances[msg.sender] += amount;
-
-        emit CollateralAdded(positionId, amount);
+    /// @notice Allows a user to add collateral on behalf of another user
+    /// @param positionId The ID of the position to modify
+    /// @param onBehalfOf The onBeHalfOf user
+    /// @param amount The collateral amount
+    function addCollateralFor(
+        uint256 positionId,
+        address onBehalfOf,
+        uint256 amount
+    ) external nonReentrant onlyRole(LEVERAGE_ROLE) {
+        _addCollateral(msg.sender, onBehalfOf, positionId, amount);
     }
 
     /// @notice Repays debt for an existing position
@@ -363,19 +369,19 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         emit DebtRepaid(positionId, debtAmount);
     }
 
-    /// @notice Allows users to borrow ShezUSD
+    /// @notice Allows users to borrow loanToken
     /// @dev emits a {Borrowed} event
     /// @param positionId The ID of the position to borrow for
-    /// @param amount The amount of ShezUSD to be borrowed
+    /// @param amount The amount of loanToken to be borrowed
     function borrow(uint256 positionId, uint256 amount) external nonReentrant {
         _borrow(msg.sender, msg.sender, positionId, amount);
     }
 
-    /// @notice Allows users to borrow ShezUSD
+    /// @notice Allows users to borrow loanToken
     /// @dev emits a {Borrowed} event
     /// @param positionId The ID of the position to borrow for
     /// @param onBehalfOf The owner of the position
-    /// @param amount The amount of ShezUSD to be borrowed
+    /// @param amount The amount of loanToken to be borrowed
     function borrowFor(
         uint256 positionId,
         address onBehalfOf,
@@ -556,6 +562,24 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
     // ======================================================== //
     // ================== INTERNAL FUNCTIONS ================== //
     // ======================================================== //
+
+    /// @dev See {addCollateral}
+    function _addCollateral(
+        address account,
+        address onBehalfOf,
+        uint256 positionId,
+        uint256 amount
+    ) internal {
+        if (amount == 0) revert ZeroCollateralAmount();
+        if (!collateralToken.transferFrom(account, address(this), amount)) {
+            revert CollateralTransferFailed();
+        }
+
+        positions[positionId].collateralAmount += amount;
+        collateralBalances[onBehalfOf] += amount;
+
+        emit CollateralAdded(positionId, amount);
+    }
 
     /// @dev See {borrow}
     function _borrow(
