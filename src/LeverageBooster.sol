@@ -60,8 +60,9 @@ contract LeverageBooster is AccessControl, ReentrancyGuard {
 
     constructor(
         string memory _description,
-        address _vault,
-        address _swapRouter
+        address _vault
+        // ,
+        // address _swapRouter
     ) {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
 

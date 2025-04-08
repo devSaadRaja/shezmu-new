@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "forge-std/Test.sol";
-
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -197,11 +195,6 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         );
         uint256 maxLoanValue = (collateralValue * ltvRatio) / 100;
         uint256 loanPrice = _getPrice(loanPriceFeed);
-
-        console.log();
-        console.log(positions[positionId].debtAmount, "<<< loanTaken");
-        console.log((maxLoanValue * PRECISION) / loanPrice, "<<< maxLoan");
-        console.log();
         return (maxLoanValue * PRECISION) / loanPrice;
     }
 
@@ -598,9 +591,6 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         uint256 collateralValue = getCollateralValue(position.collateralAmount);
         uint256 newLoanValue = getLoanValue(newDebtAmount);
         uint256 maxLoanValue = (collateralValue * ltvRatio) / 100;
-
-        console.log(newLoanValue, "<<< newLoanValue");
-        console.log(maxLoanValue, "<<< maxLoanValue");
 
         if (newLoanValue > maxLoanValue) revert LoanExceedsLTVLimit();
 
