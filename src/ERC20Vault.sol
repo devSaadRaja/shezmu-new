@@ -613,6 +613,7 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
     }
 
     /// @notice Internal function to collect interest if conditions are met
+    /// @param positionId The ID of the position to collect interest
     function _collectInterestIfAvailable(uint256 positionId) internal {
         if (
             address(interestCollector) == address(0) ||

@@ -1,32 +1,28 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.0;
 
 import "forge-std/Test.sol";
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
-import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
-
+import {IPriceFeed} from "../src/interfaces/IPriceFeed.sol";
 import {IHooks} from "v4-core/src/interfaces/IHooks.sol";
-import {IPoolManager} from "v4-core/src/interfaces/IPoolManager.sol";
-import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {IPositionManager} from "./interfaces/IPositionManager.sol";
+import {IPoolManager} from "v4-core/src/interfaces/IPoolManager.sol";
+import {IUniversalRouter} from "../src/interfaces/IUniversalRouter.sol";
+import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 import {EasyPosm} from "./utils/EasyPosm.sol";
 import {PoolKey} from "v4-core/src/types/PoolKey.sol";
+import {Currency} from "v4-core/src/types/Currency.sol";
 import {TickMath} from "v4-core/src/libraries/TickMath.sol";
 import {StateLibrary} from "v4-core/src/libraries/StateLibrary.sol";
 import {LiquidityAmounts} from "v4-core/test/utils/LiquidityAmounts.sol";
-import {Currency} from "v4-core/src/types/Currency.sol";
 
-import "../src/ERC20Vault.sol";
-import "../src/LeverageBooster.sol";
-import "../src/InterestCollector.sol";
-import "../src/mock/MockERC20.sol";
-import "../src/mock/MockERC20Mintable.sol";
-import "../src/mock/MockPriceFeed.sol";
-
-import "../src/interfaces/IPriceFeed.sol";
+import {ERC20Vault} from "../src/ERC20Vault.sol";
+import {LeverageBooster} from "../src/LeverageBooster.sol";
+import {InterestCollector} from "../src/InterestCollector.sol";
+import {MockERC20} from "../src/mock/MockERC20.sol";
+import {MockERC20Mintable} from "../src/mock/MockERC20Mintable.sol";
+import {MockPriceFeed} from "../src/mock/MockPriceFeed.sol";
 
 contract ERC20VaultTest is Test {
     using EasyPosm for IPositionManager;
@@ -36,9 +32,9 @@ contract ERC20VaultTest is Test {
     // ================== STRUCTURE ================== //
     // =============================================== //
 
-    //* ////////////// *//
     //* BASE ADDRESSES *//
-    //* ////////////// *//
+    IUniversalRouter SWAP_ROUTER =
+        IUniversalRouter(0x6fF5693b99212Da76ad316178A184AB56D299b43);
     IPoolManager POOL_MANAGER =
         IPoolManager(0x498581fF718922c3f8e6A244956aF099B2652b2b);
     IPositionManager POSITION_MANAGER =
@@ -46,8 +42,7 @@ contract ERC20VaultTest is Test {
     IAllowanceTransfer PERMIT2 =
         IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3);
 
-    address public SWAP_ROUTER = address(0);
-
+    PoolKey pool;
     LeverageBooster leverageBooster;
     ERC20Vault vault;
     MockERC20 WETH;
@@ -95,7 +90,12 @@ contract ERC20VaultTest is Test {
             treasury
         );
         interestCollector = new InterestCollector(treasury);
-        leverageBooster = new LeverageBooster("", address(vault)); // , SWAP_ROUTER
+        leverageBooster = new LeverageBooster(
+            "",
+            address(vault),
+            address(PERMIT2),
+            address(SWAP_ROUTER)
+        );
 
         vault.setInterestCollector(address(interestCollector));
         vault.toggleInterestCollection(true);
@@ -113,6 +113,10 @@ contract ERC20VaultTest is Test {
         vm.stopPrank();
 
         _poolAndLiquidity();
+
+        bytes memory encodedKey = abi.encode(pool);
+        vm.prank(deployer);
+        leverageBooster.setPool(encodedKey);
     }
 
     // ================================================ //
@@ -126,8 +130,7 @@ contract ERC20VaultTest is Test {
         // uint256 debtAmount = 100 ether;
 
         WETH.approve(address(leverageBooster), collateralAmount);
-        WETH.approve(address(leverageBooster), 1_000_000 ether); // ! only for testing (until uniswap v4 implementation)
-        leverageBooster.leveragePosition(collateralAmount, 4);
+        leverageBooster.leveragePosition(collateralAmount, 4, 0, new bytes(0));
 
         // WETH.approve(address(vault), collateralAmount);
         // vault.openPosition(address(WETH), collateralAmount, debtAmount);
@@ -170,7 +173,7 @@ contract ERC20VaultTest is Test {
         // --- CREATING POOL --- //
         ///////////////////////////
 
-        PoolKey memory pool = PoolKey({
+        pool = PoolKey({
             currency0: Currency.wrap(address(WETH)),
             currency1: Currency.wrap(address(shezUSD)),
             fee: lpFee,
