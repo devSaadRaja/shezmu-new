@@ -26,7 +26,7 @@ import {MockERC20} from "../src/mock/MockERC20.sol";
 import {MockERC20Mintable} from "../src/mock/MockERC20Mintable.sol";
 import {MockPriceFeed} from "../src/mock/MockPriceFeed.sol";
 
-contract ERC20VaultTest is Test {
+contract LeverageBoosterTest is Test {
     using EasyPosm for IPositionManager;
     using StateLibrary for IPoolManager;
 
