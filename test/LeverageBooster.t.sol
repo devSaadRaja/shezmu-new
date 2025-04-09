@@ -3,9 +3,11 @@ pragma solidity ^0.8.0;
 
 import "forge-std/Test.sol";
 
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IPriceFeed} from "../src/interfaces/IPriceFeed.sol";
 import {IHooks} from "v4-core/src/interfaces/IHooks.sol";
 import {IPositionManager} from "./interfaces/IPositionManager.sol";
+import {IV4Router} from "v4-periphery/src/interfaces/IV4Router.sol";
 import {IPoolManager} from "v4-core/src/interfaces/IPoolManager.sol";
 import {IUniversalRouter} from "../src/interfaces/IUniversalRouter.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
@@ -45,7 +47,7 @@ contract ERC20VaultTest is Test {
     PoolKey pool;
     LeverageBooster leverageBooster;
     ERC20Vault vault;
-    MockERC20 WETH;
+    IERC20 WETH; // MockERC20 WETH;
     MockERC20Mintable shezUSD;
 
     // IPriceFeed wethPriceFeed;
@@ -72,8 +74,11 @@ contract ERC20VaultTest is Test {
     function setUp() public {
         vm.startPrank(deployer);
 
-        WETH = new MockERC20("Collateral Token", "COL");
+        // WETH = new MockERC20("Collateral Token", "COL");
         shezUSD = new MockERC20Mintable("Shez USD", "shezUSD");
+
+        WETH = IERC20(0x4200000000000000000000000000000000000006); // base
+        deal(address(WETH), deployer, 1_000_000_000 ether);
 
         // wethPriceFeed = IPriceFeed(0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419);
         wethPriceFeed = new MockPriceFeed(200 * 10 ** 8, 8); // $200
@@ -123,29 +128,211 @@ contract ERC20VaultTest is Test {
     // ================== TEST CASES ================== //
     // ================================================ //
 
-    function test_LeveragePosition() public {
+    function test_ExceedsMaxLeverage() public {
         vm.startPrank(user1);
 
-        uint256 collateralAmount = 1000 ether; // $200,000 worth
-        // uint256 debtAmount = 100 ether;
+        uint256 collateralAmount = 1000 ether;
+        uint256 leverage = 11; // MAX_LEVERAGE is 10
 
         WETH.approve(address(leverageBooster), collateralAmount);
-        leverageBooster.leveragePosition(collateralAmount, 4, 0, new bytes(0));
-
-        // WETH.approve(address(vault), collateralAmount);
-        // vault.openPosition(address(WETH), collateralAmount, debtAmount);
-
-        // assertEq(vault.getCollateralBalance(user1), collateralAmount);
-        // assertEq(vault.getLoanBalance(user1), debtAmount);
-        // (, uint256 posCollateral, uint256 posDebt, ) = vault.getPosition(1);
-        // assertEq(posCollateral, collateralAmount);
-        // assertEq(posDebt, debtAmount);
-        // assertEq(shezUSD.balanceOf(user1), debtAmount);
-
-        // uint256 maxBorrowable = vault.getTotalMaxBorrowable(user1);
-        // assertEq(maxBorrowable, 1000 ether); // $100,000 worth at 50% LTV
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                LeverageBooster.ExceedMaxLeverage.selector,
+                leverage
+            )
+        );
+        leverageBooster.leveragePosition(
+            collateralAmount,
+            leverage,
+            0,
+            new bytes(0)
+        );
 
         vm.stopPrank();
+    }
+
+    function test_NoBorrowCapacity() public {
+        // Set WETH price very low to limit borrow capacity
+        vm.prank(deployer);
+        wethPriceFeed.setPrice(1); // 1 wei per WETH
+
+        vm.startPrank(user1);
+
+        uint256 collateralAmount = 1; // Small collateral - 1 wei
+        uint256 leverage = 2;
+
+        WETH.approve(address(leverageBooster), collateralAmount);
+        vm.expectRevert(bytes("No borrow capacity"));
+        leverageBooster.leveragePosition(
+            collateralAmount,
+            leverage,
+            0,
+            new bytes(0)
+        );
+
+        vm.stopPrank();
+    }
+
+    function test_PoolKeyNotSet() public {
+        vm.startPrank(deployer);
+
+        // Deploy a new LeverageBooster without setting the pool
+        LeverageBooster newLeverageBooster = new LeverageBooster(
+            "Test",
+            address(vault),
+            address(PERMIT2),
+            address(SWAP_ROUTER)
+        );
+        vault.grantRole(
+            keccak256("LEVERAGE_ROLE"),
+            address(newLeverageBooster)
+        );
+
+        vm.stopPrank();
+
+        vm.startPrank(user1);
+
+        uint256 collateralAmount = 1000 ether;
+        uint256 leverage = 2;
+
+        WETH.approve(address(newLeverageBooster), collateralAmount);
+        vm.expectRevert(bytes("PoolKey not set"));
+        newLeverageBooster.leveragePosition(
+            collateralAmount,
+            leverage,
+            0,
+            new bytes(0)
+        );
+
+        vm.stopPrank();
+    }
+
+    function test_InsufficientOutput() public {
+        vm.startPrank(user1);
+
+        uint256 collateralAmount = 1000 ether;
+        uint256 leverage = 2;
+        uint128 minAmountOut = 1100 ether; // high
+
+        WETH.approve(address(leverageBooster), collateralAmount);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IV4Router.V4TooLittleReceived.selector,
+                minAmountOut,
+                996006981039903216493
+            )
+        );
+        leverageBooster.leveragePosition(
+            collateralAmount,
+            leverage,
+            minAmountOut,
+            new bytes(0)
+        );
+
+        vm.stopPrank();
+    }
+
+    function test_ZeroLeverage() public {
+        uint256 collateralAmount = 1000 ether;
+        uint256 leverage = 0;
+
+        vm.startPrank(user1);
+        WETH.approve(address(leverageBooster), collateralAmount);
+        uint256 positionId = leverageBooster.leveragePosition(
+            collateralAmount,
+            leverage,
+            0,
+            new bytes(0)
+        );
+        vm.stopPrank();
+
+        (, uint256 posCollateral, uint256 posDebt, ) = vault.getPosition(
+            positionId
+        );
+        assertEq(posCollateral, collateralAmount);
+        assertEq(posDebt, 0);
+        assertEq(shezUSD.balanceOf(user1), 0);
+    }
+
+    function test_FullLeverage() public {
+        vm.startPrank(user1);
+
+        uint256 collateralAmount = 1000 ether;
+        uint256 leverage = leverageBooster.MAX_LEVERAGE();
+
+        WETH.approve(address(leverageBooster), collateralAmount);
+        uint256 positionId = leverageBooster.leveragePosition(
+            collateralAmount,
+            leverage,
+            0,
+            new bytes(0)
+        );
+
+        (, uint256 posCollateral, uint256 posDebt, ) = vault.getPosition(
+            positionId
+        );
+        assertGt(posCollateral, collateralAmount); // Collateral increases from swaps
+        assertGt(posDebt, 0); // Debt accumulates
+
+        vm.stopPrank();
+    }
+
+    function test_LeverageOneNoSwap() public {
+        vm.startPrank(user1);
+
+        uint256 collateralAmount = 1000 ether;
+        uint256 leverage = 1;
+
+        WETH.approve(address(leverageBooster), collateralAmount);
+        uint256 positionId = leverageBooster.leveragePosition(
+            collateralAmount,
+            leverage,
+            0,
+            new bytes(0)
+        );
+
+        (, uint256 posCollateral, uint256 posDebt, ) = vault.getPosition(
+            positionId
+        );
+        assertEq(posCollateral, collateralAmount); // No additional collateral from swap
+        assertGt(posDebt, 0); // Debt from one borrow
+        assertEq(shezUSD.balanceOf(user1), posDebt);
+
+        vm.stopPrank();
+    }
+
+    function test_PriceDropMakesPositionLiquidatable() public {
+        uint256 collateralAmount = 1000 ether;
+        uint256 leverage = 5;
+
+        vm.startPrank(user1);
+        WETH.approve(address(leverageBooster), collateralAmount);
+        uint256 positionId = leverageBooster.leveragePosition(
+            collateralAmount,
+            leverage,
+            0,
+            new bytes(0)
+        );
+        vm.stopPrank();
+
+        // Verify initial state (not liquidatable)
+        assertFalse(
+            vault.isLiquidatable(positionId),
+            "Position should not be liquidatable initially"
+        );
+
+        vm.prank(deployer);
+        wethPriceFeed.setPrice(10 * 10 ** 8); // WETH = $10
+
+        // Verify position is now liquidatable
+        assertTrue(
+            vault.isLiquidatable(positionId),
+            "Position should be liquidatable after price drop"
+        );
+
+        vm.prank(user1);
+        vm.expectRevert(ERC20Vault.LoanExceedsLTVLimit.selector);
+        vault.borrow(positionId, 1 ether);
     }
 
     function _poolAndLiquidity() internal {

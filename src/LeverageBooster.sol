@@ -49,9 +49,6 @@ contract LeverageBooster is Ownable, ReentrancyGuard {
     // ================== ERRORS ================== //
     // ============================================ //
 
-    error NoRoutes(address from, address to);
-    error InvalidRoute();
-    error PositionUnhealthy(uint256 health, uint256 minHealth);
     error ExceedMaxLeverage(uint256 leverage);
 
     // ================================================= //
@@ -197,15 +194,6 @@ contract LeverageBooster is Ownable, ReentrancyGuard {
 
         collateralToken.approve(address(vault), collateralOutput);
         vault.addCollateralFor(positionId, msg.sender, collateralOutput);
-
-        // Check position health to ensure it's not liquidatable
-        uint256 health = vault.getPositionHealth(positionId);
-        uint256 minHealth = (vault.ltvRatio() * vault.liquidationThreshold()) /
-            100;
-        minHealth = (vault.PRECISION() * minHealth) / 100;
-        if (health < minHealth) {
-            revert PositionUnhealthy(health, minHealth);
-        }
     }
 
     /**
@@ -272,8 +260,5 @@ contract LeverageBooster is Ownable, ReentrancyGuard {
             .balanceOf(address(this));
 
         amountOut = balanceAfter - balanceBefore;
-
-        require(amountOut >= minAmountOut, "Insufficient output amount");
-        return amountOut;
     }
 }
