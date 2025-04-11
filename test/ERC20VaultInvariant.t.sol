@@ -46,8 +46,8 @@ contract ERC20VaultInvariantTest is Test {
     PoolKey pool;
     ERC20Vault vault;
     LeverageBooster leverageBooster;
-    // IERC20 WETH;
-    MockERC20 WETH;
+    IERC20 WETH;
+    // MockERC20 WETH;
     MockERC20Mintable shezUSD;
 
     // IPriceFeed wethPriceFeed;
@@ -89,10 +89,10 @@ contract ERC20VaultInvariantTest is Test {
     function setUp() public {
         vm.startPrank(deployer);
 
-        // WETH = IERC20(0x4200000000000000000000000000000000000006); // base
-        // deal(address(WETH), deployer, 1_000_000_000 ether);
+        WETH = IERC20(0x4200000000000000000000000000000000000006); // base
+        deal(address(WETH), deployer, 1_000_000_000 ether);
 
-        WETH = new MockERC20("Collateral Token", "COL");
+        // WETH = new MockERC20("Collateral Token", "COL");
         shezUSD = new MockERC20Mintable("Shez USD", "shezUSD");
 
         // wethPriceFeed = IPriceFeed(0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419);
@@ -146,7 +146,7 @@ contract ERC20VaultInvariantTest is Test {
         // Specify the openPosition function as a target selector
         FuzzSelector memory selectorTest = FuzzSelector({
             addr: address(this),
-            selectors: new bytes4[](9)
+            selectors: new bytes4[](10)
         });
         selectorTest.selectors[0] = this.handler_openPosition.selector;
         selectorTest.selectors[1] = this.handler_addCollateral.selector;
@@ -157,6 +157,7 @@ contract ERC20VaultInvariantTest is Test {
         selectorTest.selectors[6] = this.handler_collectInterest.selector;
         selectorTest.selectors[7] = this.handler_withdrawInterest.selector;
         selectorTest.selectors[8] = this.handler_leveragePosition.selector;
+        selectorTest.selectors[9] = this.handler_borrow.selector;
         targetSelector(selectorTest);
         // FuzzSelector memory selectorVault = FuzzSelector({
         //     addr: address(vault),
@@ -560,6 +561,37 @@ contract ERC20VaultInvariantTest is Test {
             // Revert expected for some edge cases (e.g., low liquidity, extreme price)
         }
 
+        vm.stopPrank();
+    }
+
+    function handler_borrow(uint256 positionId, uint256 borrowAmount) public {
+        uint256 nextId = vault.nextPositionId();
+        if (nextId <= 1) return; // No positions exist yet
+
+        positionId = bound(positionId, 1, nextId - 1);
+        (address owner, uint256 posCollateral, uint256 posDebt, ) = vault
+            .getPosition(positionId);
+
+        // Skip if position doesn't exist or has been liquidated
+        if (owner == address(0) || wasLiquidated[positionId]) return;
+
+        borrowAmount = bound(borrowAmount, 0, 1e24);
+
+        uint256 newDebtAmount = posDebt + borrowAmount;
+        uint256 collateralValue = vault.getCollateralValue(posCollateral);
+        uint256 newLoanValue = vault.getLoanValue(newDebtAmount);
+        uint256 maxLoanValue = (collateralValue * INITIAL_LTV) / 100;
+
+        vm.startPrank(user1);
+        if (
+            borrowAmount > 0 && newLoanValue <= maxLoanValue && owner == user1
+        ) {
+            _collectInterest(positionId, posDebt);
+
+            try vault.borrow(positionId, borrowAmount) {
+                initialDebt[positionId] += borrowAmount;
+            } catch {}
+        }
         vm.stopPrank();
     }
 
