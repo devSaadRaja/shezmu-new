@@ -210,10 +210,9 @@ contract LeverageBooster is Ownable, ReentrancyGuard {
         uint128 minAmountOut,
         bytes memory hookData
     ) internal returns (uint256 amountOut) {
-        (Currency inputCurrency, Currency outputCurrency) = (
-            key.currency1,
-            key.currency0
-        );
+        bool zeroForOne = address(loanToken) < address(collateralToken)
+            ? true
+            : false;
 
         loanToken.approve(address(permit2), type(uint256).max);
         permit2.approve(
@@ -238,26 +237,22 @@ contract LeverageBooster is Ownable, ReentrancyGuard {
         params[0] = abi.encode(
             IV4Router.ExactInputSingleParams({
                 poolKey: key,
-                zeroForOne: false,
+                zeroForOne: zeroForOne,
                 amountIn: amountIn,
                 amountOutMinimum: minAmountOut,
                 hookData: hookData
             })
         );
-        params[1] = abi.encode(inputCurrency, amountIn);
-        params[2] = abi.encode(outputCurrency, minAmountOut);
+        params[1] = abi.encode(loanToken, amountIn);
+        params[2] = abi.encode(collateralToken, minAmountOut);
 
         // Combine actions and params into inputs
         bytes[] memory inputs = new bytes[](1);
         inputs[0] = abi.encode(actions, params);
 
-        uint256 balanceBefore = IERC20(Currency.unwrap(outputCurrency))
-            .balanceOf(address(this));
-
+        uint256 balanceBefore = collateralToken.balanceOf(address(this));
         swapRouter.execute(commands, inputs);
-
-        uint256 balanceAfter = IERC20(Currency.unwrap(outputCurrency))
-            .balanceOf(address(this));
+        uint256 balanceAfter = collateralToken.balanceOf(address(this));
 
         amountOut = balanceAfter - balanceBefore;
     }

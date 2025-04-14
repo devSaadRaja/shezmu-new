@@ -33,13 +33,23 @@ contract ERC20VaultInvariantTest is Test {
     // ================== STRUCTURE ================== //
     // =============================================== //
 
-    //* BASE ADDRESSES *//
+    // //* BASE ADDRESSES *//
+    // IUniversalRouter SWAP_ROUTER =
+    //     IUniversalRouter(0x6fF5693b99212Da76ad316178A184AB56D299b43);
+    // IPoolManager POOL_MANAGER =
+    //     IPoolManager(0x498581fF718922c3f8e6A244956aF099B2652b2b);
+    // IPositionManager POSITION_MANAGER =
+    //     IPositionManager(payable(0x7C5f5A4bBd8fD63184577525326123B519429bDc));
+    // IAllowanceTransfer PERMIT2 =
+    //     IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3);
+
+    //* ETHEREUM ADDRESSES *//
     IUniversalRouter SWAP_ROUTER =
-        IUniversalRouter(0x6fF5693b99212Da76ad316178A184AB56D299b43);
+        IUniversalRouter(0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af);
     IPoolManager POOL_MANAGER =
-        IPoolManager(0x498581fF718922c3f8e6A244956aF099B2652b2b);
+        IPoolManager(0x000000000004444c5dc75cB358380D2e3dE08A90);
     IPositionManager POSITION_MANAGER =
-        IPositionManager(payable(0x7C5f5A4bBd8fD63184577525326123B519429bDc));
+        IPositionManager(payable(0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e));
     IAllowanceTransfer PERMIT2 =
         IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3);
 
@@ -89,7 +99,7 @@ contract ERC20VaultInvariantTest is Test {
     function setUp() public {
         vm.startPrank(deployer);
 
-        WETH = IERC20(0x4200000000000000000000000000000000000006); // base
+        WETH = IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48); // eth mainnet
         deal(address(WETH), deployer, 1_000_000_000 ether);
 
         // WETH = new MockERC20("Collateral Token", "COL");
@@ -1108,9 +1118,14 @@ contract ERC20VaultInvariantTest is Test {
         // --- CREATING POOL --- //
         ///////////////////////////
 
+        (address currency0, address currency1) = address(WETH) <
+            address(shezUSD)
+            ? (address(WETH), address(shezUSD))
+            : (address(shezUSD), address(WETH));
+
         pool = PoolKey({
-            currency0: Currency.wrap(address(WETH)),
-            currency1: Currency.wrap(address(shezUSD)),
+            currency0: Currency.wrap(currency0),
+            currency1: Currency.wrap(currency1),
             fee: lpFee,
             tickSpacing: tickSpacing,
             hooks: IHooks(address(0))
