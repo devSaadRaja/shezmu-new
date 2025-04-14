@@ -19,7 +19,8 @@ contract InterestCollectorTest is Test {
 
     InterestCollector interestCollector;
     ERC20Vault vault;
-    MockERC20 WETH;
+    IERC20 WETH;
+    // MockERC20 WETH;
     MockERC20Mintable shezUSD;
 
     MockPriceFeed wethPriceFeed;
@@ -42,8 +43,10 @@ contract InterestCollectorTest is Test {
     function setUp() public {
         vm.startPrank(deployer);
 
-        // Deploy tokens and price feeds
-        WETH = new MockERC20("Collateral Token", "COL");
+        // WETH = new MockERC20("Collateral Token", "COL");
+        WETH = IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48); // eth mainnet
+        deal(address(WETH), deployer, 1_000_000_000 ether);
+
         shezUSD = new MockERC20Mintable("Shez USD", "shezUSD");
 
         wethPriceFeed = new MockPriceFeed(200 * 10 ** 8, 8); // $200
@@ -129,7 +132,7 @@ contract InterestCollectorTest is Test {
 
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
-        vault.openPosition(address(WETH), 1000 ether, debtAmount);
+        vault.openPosition(user1, address(WETH), 1000 ether, debtAmount);
         vm.stopPrank();
 
         vm.roll(block.number + 300); // Advance 1 period (300 blocks)
@@ -155,7 +158,7 @@ contract InterestCollectorTest is Test {
     function test_IsCollectionReadyAfterPeriod() public {
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
-        vault.openPosition(address(WETH), 1000 ether, 500 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
         vm.stopPrank();
 
         vm.roll(block.number + 300);
@@ -232,7 +235,7 @@ contract InterestCollectorTest is Test {
     function test_CollectInterestSuccess() public {
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
-        vault.openPosition(address(WETH), 1000 ether, 500 ether); // Creates debt
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether); // Creates debt
         vm.stopPrank();
 
         vm.roll(block.number + 300); // Advance 1 period
@@ -312,7 +315,7 @@ contract InterestCollectorTest is Test {
     function test_CollectInterestNoInterestDue() public {
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
-        vault.openPosition(address(WETH), 1000 ether, 500 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
         vm.stopPrank();
 
         vm.roll(block.number + 300);
@@ -330,7 +333,7 @@ contract InterestCollectorTest is Test {
     function test_WithdrawInterestSuccess() public {
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
-        vault.openPosition(address(WETH), 1000 ether, 500 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
         vm.stopPrank();
 
         vm.roll(block.number + 300);
@@ -420,7 +423,7 @@ contract InterestCollectorTest is Test {
     function test_CalculateInterestDueLessThanOnePeriod() public {
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
-        vault.openPosition(address(WETH), 1000 ether, 500 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
         vm.stopPrank();
 
         vm.roll(block.number + 150); // Advance 150 blocks (less than 300)
@@ -441,7 +444,7 @@ contract InterestCollectorTest is Test {
         // First, collect some interest
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
-        vault.openPosition(address(WETH), 1000 ether, 500 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
         vm.stopPrank();
 
         vm.roll(block.number + 300);
@@ -476,7 +479,7 @@ contract InterestCollectorTest is Test {
         // Open a position to set lastCollectionBlock
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
-        vault.openPosition(address(WETH), 1000 ether, 500 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
         vm.stopPrank();
 
         // Do not advance blocks, so currentBlock == lastCollectionBlock

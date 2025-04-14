@@ -1,18 +1,20 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 import {EERC20} from "./interfaces/EERC20.sol";
 import {IPriceFeed} from "./interfaces/IPriceFeed.sol";
 import {IInterestCollector} from "./interfaces/IInterestCollector.sol";
 
-contract ERC20Vault is ReentrancyGuard, Ownable {
+contract ERC20Vault is ReentrancyGuard, AccessControl {
     // =============================================== //
     // ================== STRUCTURE ================== //
     // =============================================== //
+
+    bytes32 public constant LEVERAGE_ROLE = keccak256("LEVERAGE_ROLE");
 
     struct Position {
         address owner;
@@ -57,6 +59,7 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         uint256 debtAmount
     );
     event CollateralAdded(uint256 indexed positionId, uint256 amount);
+    event Borrowed(uint256 indexed positionId, uint256 amount);
     event DebtRepaid(uint256 indexed positionId, uint256 amount);
     event WithdrawnCollateral(uint256 indexed positionId, uint256 amount);
     event PositionLiquidated(
@@ -108,7 +111,7 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         address _collateralPriceFeed,
         address _loanPriceFeed,
         address _treasury
-    ) Ownable(msg.sender) {
+    ) {
         if (_collateralToken == address(0)) revert InvalidCollateralToken();
         if (_loanToken == address(0)) revert InvalidLoanToken();
         if (_ltvRatio == 0 || _ltvRatio > 100) revert InvalidLTVRatio();
@@ -125,6 +128,8 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         collateralPriceFeed = IPriceFeed(_collateralPriceFeed);
         loanPriceFeed = IPriceFeed(_loanPriceFeed);
         treasury = _treasury;
+
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
 
     // ==================================================== //
@@ -180,9 +185,25 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
     }
 
     /// @notice Calculates the maximum amount a user can borrow based on their total collateral
+    /// @param positionId The positionId to check max loan amount
+    /// @return The maximum borrowable amount in loan tokens
+    function getMaxBorrowable(
+        uint256 positionId
+    ) external view returns (uint256) {
+        uint256 collateralValue = getCollateralValue(
+            positions[positionId].collateralAmount
+        );
+        uint256 maxLoanValue = (collateralValue * ltvRatio) / 100;
+        uint256 loanPrice = _getPrice(loanPriceFeed);
+        return (maxLoanValue * PRECISION) / loanPrice;
+    }
+
+    /// @notice Calculates the maximum amount a user can borrow based on their total collateral
     /// @param user The address of the user to check
     /// @return The maximum borrowable amount in loan tokens
-    function getMaxBorrowable(address user) external view returns (uint256) {
+    function getTotalMaxBorrowable(
+        address user
+    ) external view returns (uint256) {
         uint256 totalCollateral;
         uint256[] memory posIds = userPositionIds[user];
         for (uint256 i = 0; i < posIds.length; i++) {
@@ -244,6 +265,7 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
     /// @param collateralAmount The amount of collateral to deposit
     /// @param debtAmount The amount of tokens to borrow
     function openPosition(
+        address owner,
         address collateral,
         uint256 collateralAmount,
         uint256 debtAmount
@@ -252,7 +274,7 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
             revert InvalidCollateralToken();
         }
         if (collateralAmount == 0) revert ZeroCollateralAmount();
-        if (debtAmount == 0) revert ZeroLoanAmount();
+        // if (debtAmount == 0) revert ZeroLoanAmount();
 
         uint256 collateralValue = getCollateralValue(collateralAmount);
         uint256 loanValue = getLoanValue(debtAmount);
@@ -272,28 +294,23 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
 
         uint256 positionId = nextPositionId++;
         positions[positionId] = Position(
-            msg.sender,
+            owner,
             collateralAmount,
             debtAmount,
             block.number
         );
-        userPositionIds[msg.sender].push(positionId);
+        userPositionIds[owner].push(positionId);
 
-        collateralBalances[msg.sender] += collateralAmount;
-        loanBalances[msg.sender] += debtAmount;
+        collateralBalances[owner] += collateralAmount;
+        loanBalances[owner] += debtAmount;
 
         totalDebt += debtAmount;
 
-        loanToken.mint(msg.sender, debtAmount);
+        loanToken.mint(owner, debtAmount);
 
         interestCollector.setLastCollectionBlock(address(this), positionId);
 
-        emit PositionOpened(
-            positionId,
-            msg.sender,
-            collateralAmount,
-            debtAmount
-        );
+        emit PositionOpened(positionId, owner, collateralAmount, debtAmount);
     }
 
     /// @notice Adds additional collateral to an existing position
@@ -303,18 +320,19 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         uint256 positionId,
         uint256 amount
     ) external nonReentrant {
-        if (amount == 0) revert ZeroCollateralAmount();
-        if (positions[positionId].owner != msg.sender) {
-            revert NotPositionOwner();
-        }
-        if (!collateralToken.transferFrom(msg.sender, address(this), amount)) {
-            revert CollateralTransferFailed();
-        }
+        _addCollateral(msg.sender, msg.sender, positionId, amount);
+    }
 
-        positions[positionId].collateralAmount += amount;
-        collateralBalances[msg.sender] += amount;
-
-        emit CollateralAdded(positionId, amount);
+    /// @notice Allows a user to add collateral on behalf of another user
+    /// @param positionId The ID of the position to modify
+    /// @param onBehalfOf The onBeHalfOf user
+    /// @param amount The collateral amount
+    function addCollateralFor(
+        uint256 positionId,
+        address onBehalfOf,
+        uint256 amount
+    ) external nonReentrant onlyRole(LEVERAGE_ROLE) {
+        _addCollateral(msg.sender, onBehalfOf, positionId, amount);
     }
 
     /// @notice Repays debt for an existing position
@@ -342,6 +360,27 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
         totalDebt -= debtAmount;
 
         emit DebtRepaid(positionId, debtAmount);
+    }
+
+    /// @notice Allows users to borrow loanToken
+    /// @dev emits a {Borrowed} event
+    /// @param positionId The ID of the position to borrow for
+    /// @param amount The amount of loanToken to be borrowed
+    function borrow(uint256 positionId, uint256 amount) external nonReentrant {
+        _borrow(msg.sender, msg.sender, positionId, amount);
+    }
+
+    /// @notice Allows users to borrow loanToken
+    /// @dev emits a {Borrowed} event
+    /// @param positionId The ID of the position to borrow for
+    /// @param onBehalfOf The owner of the position
+    /// @param amount The amount of loanToken to be borrowed
+    function borrowFor(
+        uint256 positionId,
+        address onBehalfOf,
+        uint256 amount
+    ) external nonReentrant onlyRole(LEVERAGE_ROLE) {
+        _borrow(msg.sender, onBehalfOf, positionId, amount);
     }
 
     /// @notice Withdraws collateral from an existing position
@@ -468,7 +507,7 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
     function updatePriceFeeds(
         address _collateralFeed,
         address _loanFeed
-    ) external onlyOwner {
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (_collateralFeed == address(0)) revert InvalidCollateralPriceFeed();
         if (_loanFeed == address(0)) revert InvalidLoanPriceFeed();
         collateralPriceFeed = IPriceFeed(_collateralFeed);
@@ -477,7 +516,9 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
 
     /// @notice Updates the loan-to-value ratio
     /// @param newLtvRatio The new LTV ratio (between 0 and 100)
-    function updateLtvRatio(uint256 newLtvRatio) external onlyOwner {
+    function updateLtvRatio(
+        uint256 newLtvRatio
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (newLtvRatio == 0 || newLtvRatio > 100) revert InvalidLTVRatio();
         ltvRatio = newLtvRatio;
     }
@@ -488,7 +529,7 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
     function emergencyWithdraw(
         address token,
         uint256 amount
-    ) external onlyOwner {
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         bool success = IERC20(token).transfer(msg.sender, amount);
         if (!success) revert EmergencyWithdrawFailed();
     }
@@ -497,14 +538,16 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
     /// @param _interestCollector The address of the interest collector contract
     function setInterestCollector(
         address _interestCollector
-    ) external onlyOwner {
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         interestCollector = IInterestCollector(_interestCollector);
         emit InterestCollectorSet(_interestCollector);
     }
 
     /// @notice Enable or disable interest collection
     /// @param _enabled Whether interest collection should be enabled
-    function toggleInterestCollection(bool _enabled) external onlyOwner {
+    function toggleInterestCollection(
+        bool _enabled
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         interestCollectionEnabled = _enabled;
         emit InterestCollectionToggled(_enabled);
     }
@@ -512,6 +555,53 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
     // ======================================================== //
     // ================== INTERNAL FUNCTIONS ================== //
     // ======================================================== //
+
+    /// @dev See {addCollateral}
+    function _addCollateral(
+        address account,
+        address onBehalfOf,
+        uint256 positionId,
+        uint256 amount
+    ) internal {
+        if (amount == 0) revert ZeroCollateralAmount();
+        if (!collateralToken.transferFrom(account, address(this), amount)) {
+            revert CollateralTransferFailed();
+        }
+
+        positions[positionId].collateralAmount += amount;
+        collateralBalances[onBehalfOf] += amount;
+
+        emit CollateralAdded(positionId, amount);
+    }
+
+    /// @dev See {borrow}
+    function _borrow(
+        address account,
+        address onBehalfOf,
+        uint256 positionId,
+        uint256 amount
+    ) internal {
+        if (amount == 0) revert ZeroLoanAmount();
+        Position storage position = positions[positionId];
+
+        _collectInterestIfAvailable(positionId);
+
+        uint256 newDebtAmount = position.debtAmount + amount;
+
+        uint256 collateralValue = getCollateralValue(position.collateralAmount);
+        uint256 newLoanValue = getLoanValue(newDebtAmount);
+        uint256 maxLoanValue = (collateralValue * ltvRatio) / 100;
+
+        if (newLoanValue > maxLoanValue) revert LoanExceedsLTVLimit();
+
+        position.debtAmount = newDebtAmount;
+        loanBalances[onBehalfOf] += amount;
+        totalDebt += amount;
+
+        loanToken.mint(account, amount);
+
+        emit Borrowed(positionId, amount);
+    }
 
     /// @notice Internal function to get the latest price from a price feed
     /// @param priceFeed The price feed to query
@@ -523,6 +613,7 @@ contract ERC20Vault is ReentrancyGuard, Ownable {
     }
 
     /// @notice Internal function to collect interest if conditions are met
+    /// @param positionId The ID of the position to collect interest
     function _collectInterestIfAvailable(uint256 positionId) internal {
         if (
             address(interestCollector) == address(0) ||

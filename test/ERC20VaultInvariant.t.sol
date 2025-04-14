@@ -3,21 +3,61 @@ pragma solidity ^0.8.19;
 
 import "forge-std/Test.sol";
 
+import {IHooks} from "v4-core/src/interfaces/IHooks.sol";
+import {IPositionManager} from "./interfaces/IPositionManager.sol";
+import {IPoolManager} from "v4-core/src/interfaces/IPoolManager.sol";
+import {IUniversalRouter} from "../src/interfaces/IUniversalRouter.sol";
+import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
+
+import {EasyPosm} from "./utils/EasyPosm.sol";
+import {PoolKey} from "v4-core/src/types/PoolKey.sol";
+import {Currency} from "v4-core/src/types/Currency.sol";
+import {TickMath} from "v4-core/src/libraries/TickMath.sol";
+import {StateLibrary} from "v4-core/src/libraries/StateLibrary.sol";
+import {LiquidityAmounts} from "v4-core/test/utils/LiquidityAmounts.sol";
+
 import "../src/ERC20Vault.sol";
 import "../src/InterestCollector.sol";
 import "../src/mock/MockERC20.sol";
 import "../src/mock/MockERC20Mintable.sol";
 import "../src/mock/MockPriceFeed.sol";
+import {LeverageBooster} from "../src/LeverageBooster.sol";
 
 import "../src/interfaces/IPriceFeed.sol";
 
 contract ERC20VaultInvariantTest is Test {
+    using EasyPosm for IPositionManager;
+    using StateLibrary for IPoolManager;
+
     // =============================================== //
     // ================== STRUCTURE ================== //
     // =============================================== //
 
+    // //* BASE ADDRESSES *//
+    // IUniversalRouter SWAP_ROUTER =
+    //     IUniversalRouter(0x6fF5693b99212Da76ad316178A184AB56D299b43);
+    // IPoolManager POOL_MANAGER =
+    //     IPoolManager(0x498581fF718922c3f8e6A244956aF099B2652b2b);
+    // IPositionManager POSITION_MANAGER =
+    //     IPositionManager(payable(0x7C5f5A4bBd8fD63184577525326123B519429bDc));
+    // IAllowanceTransfer PERMIT2 =
+    //     IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3);
+
+    //* ETHEREUM ADDRESSES *//
+    IUniversalRouter SWAP_ROUTER =
+        IUniversalRouter(0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af);
+    IPoolManager POOL_MANAGER =
+        IPoolManager(0x000000000004444c5dc75cB358380D2e3dE08A90);
+    IPositionManager POSITION_MANAGER =
+        IPositionManager(payable(0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e));
+    IAllowanceTransfer PERMIT2 =
+        IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3);
+
+    PoolKey pool;
     ERC20Vault vault;
-    MockERC20 WETH;
+    LeverageBooster leverageBooster;
+    IERC20 WETH;
+    // MockERC20 WETH;
     MockERC20Mintable shezUSD;
 
     // IPriceFeed wethPriceFeed;
@@ -59,7 +99,10 @@ contract ERC20VaultInvariantTest is Test {
     function setUp() public {
         vm.startPrank(deployer);
 
-        WETH = new MockERC20("Collateral Token", "COL");
+        WETH = IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48); // eth mainnet
+        deal(address(WETH), deployer, 1_000_000_000 ether);
+
+        // WETH = new MockERC20("Collateral Token", "COL");
         shezUSD = new MockERC20Mintable("Shez USD", "shezUSD");
 
         // wethPriceFeed = IPriceFeed(0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419);
@@ -77,6 +120,12 @@ contract ERC20VaultInvariantTest is Test {
             treasury
         );
         interestCollector = new InterestCollector(treasury);
+        leverageBooster = new LeverageBooster(
+            "",
+            address(vault),
+            address(PERMIT2),
+            address(SWAP_ROUTER)
+        );
 
         vault.setInterestCollector(address(interestCollector));
         vault.toggleInterestCollection(true);
@@ -91,6 +140,12 @@ contract ERC20VaultInvariantTest is Test {
 
         vm.stopPrank();
 
+        _poolAndLiquidity();
+
+        bytes memory encodedKey = abi.encode(pool);
+        vm.prank(deployer);
+        leverageBooster.setPool(encodedKey);
+
         // Record initial WETH balance for user1
         initialWETHBalance = WETH.balanceOf(user1); // 2_000_000 ether;
 
@@ -101,7 +156,7 @@ contract ERC20VaultInvariantTest is Test {
         // Specify the openPosition function as a target selector
         FuzzSelector memory selectorTest = FuzzSelector({
             addr: address(this),
-            selectors: new bytes4[](8)
+            selectors: new bytes4[](10)
         });
         selectorTest.selectors[0] = this.handler_openPosition.selector;
         selectorTest.selectors[1] = this.handler_addCollateral.selector;
@@ -111,6 +166,8 @@ contract ERC20VaultInvariantTest is Test {
         selectorTest.selectors[5] = this.handler_liquidatePosition.selector;
         selectorTest.selectors[6] = this.handler_collectInterest.selector;
         selectorTest.selectors[7] = this.handler_withdrawInterest.selector;
+        selectorTest.selectors[8] = this.handler_leveragePosition.selector;
+        selectorTest.selectors[9] = this.handler_borrow.selector;
         targetSelector(selectorTest);
         // FuzzSelector memory selectorVault = FuzzSelector({
         //     addr: address(vault),
@@ -161,11 +218,18 @@ contract ERC20VaultInvariantTest is Test {
         // // Test success path
         // if (
         //     collateralAmount > 0 &&
-        //     debtAmount > 0 &&
+        //     // debtAmount > 0 &&
         //     vault.getLoanValue(debtAmount) <=
         //     (vault.getCollateralValue(collateralAmount) * INITIAL_LTV) / 100
         // ) {
-        try vault.openPosition(address(WETH), collateralAmount, debtAmount) {
+        try
+            vault.openPosition(
+                user1,
+                address(WETH),
+                collateralAmount,
+                debtAmount
+            )
+        {
             uint256 positionId = vault.nextPositionId() - 1;
             initialCollateral[positionId] = collateralAmount;
             initialDebt[positionId] = debtAmount;
@@ -476,6 +540,69 @@ contract ERC20VaultInvariantTest is Test {
             } catch {}
             vm.stopPrank();
         }
+    }
+
+    function handler_leveragePosition(
+        uint256 collateralAmount,
+        uint256 leverage,
+        uint128 minAmountOut
+    ) public {
+        vm.startPrank(user1);
+
+        collateralAmount = bound(collateralAmount, 0, 1e24); // Limit to 1,000,000 ETH for gas
+        leverage = bound(leverage, 0, leverageBooster.MAX_LEVERAGE());
+        minAmountOut = uint128(bound(minAmountOut, 0, 1e18));
+
+        WETH.approve(address(leverageBooster), collateralAmount);
+        deal(address(WETH), address(SWAP_ROUTER), 1e24); // Fund router with WETH
+
+        try
+            leverageBooster.leveragePosition(
+                collateralAmount,
+                leverage,
+                minAmountOut,
+                new bytes(0)
+            )
+        returns (uint256 positionId) {
+            (, , uint256 posDebt, ) = vault.getPosition(positionId);
+            initialCollateral[positionId] = collateralAmount;
+            initialDebt[positionId] = posDebt;
+        } catch {
+            // Revert expected for some edge cases (e.g., low liquidity, extreme price)
+        }
+
+        vm.stopPrank();
+    }
+
+    function handler_borrow(uint256 positionId, uint256 borrowAmount) public {
+        uint256 nextId = vault.nextPositionId();
+        if (nextId <= 1) return; // No positions exist yet
+
+        positionId = bound(positionId, 1, nextId - 1);
+        (address owner, uint256 posCollateral, uint256 posDebt, ) = vault
+            .getPosition(positionId);
+
+        // Skip if position doesn't exist or has been liquidated
+        if (owner == address(0) || wasLiquidated[positionId]) return;
+
+        borrowAmount = bound(borrowAmount, 0, 1e24);
+
+        uint256 newDebtAmount = posDebt + borrowAmount;
+        uint256 collateralValue = vault.getCollateralValue(posCollateral);
+        uint256 newLoanValue = vault.getLoanValue(newDebtAmount);
+        uint256 maxLoanValue = (collateralValue * INITIAL_LTV) / 100;
+
+        vm.startPrank(user1);
+        if (
+            borrowAmount > 0 && newLoanValue <= maxLoanValue && owner == user1
+        ) {
+            _collectInterest(positionId, posDebt);
+
+            try vault.borrow(positionId, borrowAmount) {
+                initialDebt[positionId] += borrowAmount;
+            } catch {}
+        }
+        vm.stopPrank();
     }
 
     // ================================================ //
@@ -923,5 +1050,136 @@ contract ERC20VaultInvariantTest is Test {
                 }
             }
         }
+    }
+
+    function invariant_LeveragePositionSolvency() public view {
+        uint256[] memory posIds = vault.getUserPositionIds(user1);
+        for (uint256 i = 0; i < posIds.length; i++) {
+            uint256 positionId = posIds[i];
+            (, uint256 posCollateral, uint256 posDebt, ) = vault.getPosition(
+                positionId
+            );
+
+            if (posCollateral > 0 && posDebt > 0) {
+                // Only check active positions
+                bool liquidatable = vault.isLiquidatable(positionId);
+                uint256 health = vault.getPositionHealth(positionId);
+                uint256 minHealth = (INITIAL_LTV * LIQUIDATION_THRESHOLD) / 100;
+                minHealth = (vault.PRECISION() * minHealth) / 100;
+
+                if (health >= minHealth) {
+                    assertFalse(
+                        liquidatable,
+                        "Position should NOT be liquidatable but is!"
+                    );
+                } else {
+                    assertTrue(
+                        liquidatable,
+                        "Position should be liquidatable but is not!"
+                    );
+                }
+            }
+        }
+
+        assertEq(
+            WETH.balanceOf(address(leverageBooster)),
+            0,
+            "WETH stuck in LeverageBooster after revert"
+        );
+        assertEq(
+            shezUSD.balanceOf(address(leverageBooster)),
+            0,
+            "shezUSD stuck in LeverageBooster after revert"
+        );
+    }
+
+    function _poolAndLiquidity() internal {
+        vm.startPrank(deployer);
+
+        /////////////////////////////////////
+        // --- Parameters to Configure --- //
+        /////////////////////////////////////
+
+        // --- POOL Configuration --- //
+
+        uint24 lpFee = 3000;
+        int24 tickSpacing = 60;
+        uint160 startingPrice = 79228162514264337593543950336; // 1:1 | floor(sqrt(1) * 2^96)
+
+        // --- LIQUIDITY POSITION Configuration --- //
+
+        uint256 token0Amount = 100_000_000 ether;
+        uint256 token1Amount = 100_000_000 ether;
+
+        int24 tickLower = -887220;
+        int24 tickUpper = 887220;
+
+        ///////////////////////////
+        // --- CREATING POOL --- //
+        ///////////////////////////
+
+        (address currency0, address currency1) = address(WETH) <
+            address(shezUSD)
+            ? (address(WETH), address(shezUSD))
+            : (address(shezUSD), address(WETH));
+
+        pool = PoolKey({
+            currency0: Currency.wrap(currency0),
+            currency1: Currency.wrap(currency1),
+            fee: lpFee,
+            tickSpacing: tickSpacing,
+            hooks: IHooks(address(0))
+        });
+        IPoolManager(address(POOL_MANAGER)).initialize(pool, startingPrice);
+
+        //////////////////////////////
+        // --- ADDING LIQUIDITY --- //
+        //////////////////////////////
+
+        (uint160 sqrtPriceX96, , , ) = IPoolManager(address(POOL_MANAGER))
+            .getSlot0(pool.toId());
+
+        // Converts token amounts to liquidity units
+        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
+            sqrtPriceX96,
+            TickMath.getSqrtPriceAtTick(tickLower),
+            TickMath.getSqrtPriceAtTick(tickUpper),
+            token0Amount,
+            token1Amount
+        );
+
+        uint48 expiration = uint48(block.timestamp) + 60;
+        shezUSD.approve(address(PERMIT2), type(uint256).max);
+        PERMIT2.approve(
+            address(shezUSD),
+            address(POSITION_MANAGER),
+            type(uint160).max,
+            expiration
+        ); // type(uint48).max
+        WETH.approve(address(PERMIT2), type(uint256).max);
+        PERMIT2.approve(
+            address(WETH),
+            address(POSITION_MANAGER),
+            type(uint160).max,
+            expiration
+        ); // type(uint48).max
+
+        // slippage limits
+        uint256 amount0Max = token0Amount + 1000 wei;
+        uint256 amount1Max = token1Amount + 1000 wei;
+
+        POSITION_MANAGER.mint(
+            pool,
+            tickLower,
+            tickUpper,
+            liquidity,
+            amount0Max,
+            amount1Max,
+            deployer,
+            expiration,
+            new bytes(0)
+        );
+
+        vm.stopPrank();
     }
 }
