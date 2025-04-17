@@ -28,8 +28,8 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
 
     SoulBound public soulBoundToken;
     uint256 public soulBoundFeePercent = 2;
-    mapping(uint256 => bool) public hasSoulBound; // Tracks if a position has a soul-bound token
-    mapping(address => bool) public doNotMint; // check if user has not allowed soulbound (deducting fee)
+    mapping(uint256 => bool) hasSoulBound; // Tracks if a position has a soul-bound token
+    mapping(address => bool) doNotMint; // check if user has not allowed soulbound (deducting fee)
 
     IERC20 public collateralToken;
     EERC20 public loanToken;
@@ -211,39 +211,6 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         return (maxLoanValue * PRECISION) / loanPrice;
     }
 
-    // /// @notice Calculates the maximum amount a user can borrow based on their total collateral
-    // /// @param user The address of the user to check
-    // /// @return The maximum borrowable amount in loan tokens
-    // function getTotalMaxBorrowable(
-    //     address user
-    // ) external view returns (uint256) {
-    //     uint256 totalCollateral;
-    //     uint256[] memory posIds = userPositionIds[user];
-    //     for (uint256 i = 0; i < posIds.length; i++) {
-    //         totalCollateral += positions[posIds[i]].collateralAmount;
-    //     }
-
-    //     uint256 collateralValue = getCollateralValue(totalCollateral);
-
-    //     // uint256 maxLoanValue = (collateralValue * ltvRatio) / 100;
-
-    //     uint256 maxLoanValue;
-    //     if (posIds.length > 0) {
-    //         // Use the highest effective LTV among the user's positions
-    //         uint256 highestEffectiveLtv = ltvRatio;
-    //         for (uint256 i = 0; i < posIds.length; i++) {
-    //             uint256 posLtv = positions[posIds[i]].effectiveLtvRatio;
-    //             if (posLtv > highestEffectiveLtv) highestEffectiveLtv = posLtv;
-    //         }
-    //         maxLoanValue = (collateralValue * highestEffectiveLtv) / 100;
-    //     } else {
-    //         maxLoanValue = (collateralValue * ltvRatio) / 100;
-    //     }
-
-    //     uint256 loanPrice = _getPrice(loanPriceFeed);
-    //     return (maxLoanValue * PRECISION) / loanPrice;
-    // }
-
     /// @notice Gets all position IDs owned by a user
     /// @param user The address of the user to query
     /// @return An array of position IDs
@@ -284,6 +251,29 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         return health < ((PRECISION * liquidationThresholdValue) / 100);
     }
 
+    /// @notice Checks if a position has a soul-bound token
+    /// @param positionId The ID of the position to check
+    /// @return True if the position has a soul-bound token, false otherwise
+    function getHasSoulBound(uint256 positionId) external view returns (bool) {
+        return hasSoulBound[positionId];
+    }
+
+    /// @notice Checks if a user has opted out of soul-bound token minting
+    /// @param user The address of the user to check
+    /// @return True if the user has opted out, false otherwise
+    function getDoNotMint(address user) external view returns (bool) {
+        return doNotMint[user];
+    }
+
+    /// @notice Returns the effective LTV ratio for a given position
+    /// @param positionId The ID of the position to query
+    /// @return The effective LTV ratio of the position
+    function getEffectiveLtvRatio(
+        uint256 positionId
+    ) external view returns (uint256) {
+        return positions[positionId].effectiveLtvRatio;
+    }
+
     // ===================================================== //
     // ================== WRITE FUNCTIONS ================== //
     // ===================================================== //
@@ -302,13 +292,6 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
             revert InvalidCollateralToken();
         }
         if (collateralAmount == 0) revert ZeroCollateralAmount();
-        // if (debtAmount == 0) revert ZeroLoanAmount();
-
-        uint256 collateralValue = getCollateralValue(collateralAmount);
-        uint256 loanValue = getLoanValue(debtAmount);
-        uint256 maxLoanValue = (collateralValue * ltvRatio) / 100;
-
-        if (loanValue > maxLoanValue) revert LoanExceedsLTVLimit();
 
         if (
             !collateralToken.transferFrom(
@@ -339,13 +322,15 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
 
         interestCollector.setLastCollectionBlock(address(this), positionId);
 
+        Position storage pos = positions[positionId];
+
         if (!doNotMint[owner]) {
             // Calculate the fee: 2% of collateral amount
             uint256 fee = (collateralAmount * soulBoundFeePercent) / 100;
             if (fee == 0) revert InsufficientFee();
 
             // Transfer the fee to the treasury
-            if (!collateralToken.transferFrom(msg.sender, treasury, fee)) {
+            if (!collateralToken.transfer(treasury, fee)) {
                 revert CollateralTransferFailed();
             }
 
@@ -353,15 +338,23 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
             soulBoundToken.mint(msg.sender, positionId);
             hasSoulBound[positionId] = true;
 
-            // Adjust the effective LTV or liquidation threshold
-            uint256 currentCR = (100 * PRECISION) / ltvRatio; // CR = 1 / LTV
-            uint256 targetCR = (100 * PRECISION) / 100; // Target CR = 1 (100% LTV)
-            uint256 crDifference = currentCR > targetCR
-                ? (currentCR - targetCR) / 2
-                : 0;
-            uint256 newCR = currentCR - crDifference;
-            positions[positionId].effectiveLtvRatio = (100 * PRECISION) / newCR; // New LTV = 1 / newCR
+            // Adjust the effective LTV
+            uint256 differenceTo100 = 100 - ltvRatio;
+            uint256 halfDifference = differenceTo100 / 2;
+            uint256 newLtvBeforeFee = 100 - halfDifference;
+            uint256 finalLtv = newLtvBeforeFee - soulBoundFeePercent;
+
+            pos.effectiveLtvRatio = finalLtv;
+            pos.collateralAmount -= fee;
+
+            collateralBalances[owner] -= fee;
         }
+
+        uint256 collateralValue = getCollateralValue(pos.collateralAmount);
+        uint256 loanValue = getLoanValue(debtAmount);
+        uint256 maxLoanValue = (collateralValue * pos.effectiveLtvRatio) / 100;
+
+        if (loanValue > maxLoanValue) revert LoanExceedsLTVLimit();
 
         emit PositionOpened(positionId, owner, collateralAmount, debtAmount);
     }

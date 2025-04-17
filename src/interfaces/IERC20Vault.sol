@@ -66,10 +66,6 @@ interface IERC20Vault {
         uint256 positionId
     ) external view returns (uint256);
 
-    function getTotalMaxBorrowable(
-        address user
-    ) external view returns (uint256);
-
     function getUserPositionIds(
         address user
     ) external view returns (uint256[] memory);
