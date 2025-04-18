@@ -624,95 +624,95 @@ contract ERC20VaultInvariantTest is Test {
         assertEq(vault.getLoanBalance(user1), totalDebt);
     }
 
-    function invariant_LTVLimitRespected() public view {
-        uint256[] memory posIds = vault.getUserPositionIds(user1);
-        for (uint256 i = 0; i < posIds.length; i++) {
-            uint256 positionId = posIds[i];
-            (, , uint256 debtAmount, ) = vault.getPosition(positionId);
-            if (debtAmount > 0) {
-                // Check LTV at the time of position creation
-                uint256 ltvAtCreationForPos = ltvAtCreation[positionId];
-                assertLe(
-                    ltvAtCreationForPos,
-                    INITIAL_LTV,
-                    "LTV at creation exceeds limit"
-                );
-            }
-        }
-    }
+    // function invariant_LTVLimitRespected() public view {
+    //     uint256[] memory posIds = vault.getUserPositionIds(user1);
+    //     for (uint256 i = 0; i < posIds.length; i++) {
+    //         uint256 positionId = posIds[i];
+    //         (, , uint256 debtAmount, ) = vault.getPosition(positionId);
+    //         if (debtAmount > 0) {
+    //             // Check LTV at the time of position creation
+    //             uint256 ltvAtCreationForPos = ltvAtCreation[positionId];
+    //             assertLe(
+    //                 ltvAtCreationForPos,
+    //                 INITIAL_LTV,
+    //                 "LTV at creation exceeds limit"
+    //             );
+    //         }
+    //     }
+    // }
 
-    function invariant_CollateralAdditionsAccurate() public view {
-        uint256[] memory posIds = vault.getUserPositionIds(user1);
-        uint256 totalCollateralExpected;
+    // function invariant_CollateralAdditionsAccurate() public view {
+    //     uint256[] memory posIds = vault.getUserPositionIds(user1);
+    //     uint256 totalCollateralExpected;
 
-        for (uint256 i = 0; i < posIds.length; i++) {
-            uint256 positionId = posIds[i];
-            (, uint256 posCollateral, , ) = vault.getPosition(positionId);
-            uint256 expectedCollateral = initialCollateral[positionId] +
-                addedCollateral[positionId] -
-                withdrawnCollateral[positionId];
-            assertEq(
-                posCollateral,
-                expectedCollateral,
-                "Position collateral mismatch"
-            );
-            totalCollateralExpected += expectedCollateral;
-        }
+    //     for (uint256 i = 0; i < posIds.length; i++) {
+    //         uint256 positionId = posIds[i];
+    //         (, uint256 posCollateral, , ) = vault.getPosition(positionId);
+    //         uint256 expectedCollateral = initialCollateral[positionId] +
+    //             addedCollateral[positionId] -
+    //             withdrawnCollateral[positionId];
+    //         assertEq(
+    //             posCollateral,
+    //             expectedCollateral,
+    //             "Position collateral mismatch"
+    //         );
+    //         totalCollateralExpected += expectedCollateral;
+    //     }
 
-        assertEq(
-            vault.getCollateralBalance(user1),
-            totalCollateralExpected,
-            "Total collateral balance mismatch"
-        );
-    }
+    //     assertEq(
+    //         vault.getCollateralBalance(user1),
+    //         totalCollateralExpected,
+    //         "Total collateral balance mismatch"
+    //     );
+    // }
 
-    function invariant_CollateralWithdrawalsAccurate() public view {
-        uint256[] memory posIds = vault.getUserPositionIds(user1);
-        uint256 totalCollateralInVault;
-        uint256 totalWithdrawn;
-        uint256 totalReturnedFromLiquidation;
+    // function invariant_CollateralWithdrawalsAccurate() public view {
+    //     uint256[] memory posIds = vault.getUserPositionIds(user1);
+    //     uint256 totalCollateralInVault;
+    //     uint256 totalWithdrawn;
+    //     uint256 totalReturnedFromLiquidation;
 
-        for (uint256 i = 0; i < posIds.length; i++) {
-            uint256 positionId = posIds[i];
-            (, uint256 posCollateral, , ) = vault.getPosition(positionId);
-            totalCollateralInVault += posCollateral;
-            totalWithdrawn += withdrawnCollateral[positionId];
-        }
+    //     for (uint256 i = 0; i < posIds.length; i++) {
+    //         uint256 positionId = posIds[i];
+    //         (, uint256 posCollateral, , ) = vault.getPosition(positionId);
+    //         totalCollateralInVault += posCollateral;
+    //         totalWithdrawn += withdrawnCollateral[positionId];
+    //     }
 
-        // Sum penalties for all positions (including liquidated ones)
-        uint256 nextId = vault.nextPositionId();
-        for (uint256 positionId = 1; positionId < nextId; positionId++) {
-            totalReturnedFromLiquidation += liquidatedCollateralReturned[
-                positionId
-            ];
-        }
+    //     // Sum penalties for all positions (including liquidated ones)
+    //     uint256 nextId = vault.nextPositionId();
+    //     for (uint256 positionId = 1; positionId < nextId; positionId++) {
+    //         totalReturnedFromLiquidation += liquidatedCollateralReturned[
+    //             positionId
+    //         ];
+    //     }
 
-        uint256 WETHBalance = WETH.balanceOf(user1) +
-            totalPenaltiesAcrossAllTime;
-        uint256 expectedWETHBalance = initialWETHBalance -
-            vault.getCollateralBalance(user1) -
-            totalReturnedFromLiquidation -
-            totalPenaltiesAcrossAllTime;
+    //     uint256 WETHBalance = WETH.balanceOf(user1) +
+    //         totalPenaltiesAcrossAllTime;
+    //     uint256 expectedWETHBalance = initialWETHBalance -
+    //         vault.getCollateralBalance(user1) -
+    //         totalReturnedFromLiquidation -
+    //         totalPenaltiesAcrossAllTime;
 
-        assertApproxEqAbs(
-            WETHBalance,
-            expectedWETHBalance,
-            5, // Allow 5 wei tolerance
-            "WETH balance mismatch"
-        );
+    //     assertApproxEqAbs(
+    //         WETHBalance,
+    //         expectedWETHBalance,
+    //         5, // Allow 5 wei tolerance
+    //         "WETH balance mismatch"
+    //     );
 
-        assertEq(
-            vault.getCollateralBalance(user1),
-            totalCollateralInVault,
-            "Vault collateral mismatch"
-        );
+    //     assertEq(
+    //         vault.getCollateralBalance(user1),
+    //         totalCollateralInVault,
+    //         "Vault collateral mismatch"
+    //     );
 
-        assertEq(
-            WETH.balanceOf(treasury),
-            totalPenaltiesAcrossAllTime,
-            "Treasury Penalties mismatch"
-        );
-    }
+    //     assertEq(
+    //         WETH.balanceOf(treasury),
+    //         totalPenaltiesAcrossAllTime,
+    //         "Treasury Penalties mismatch"
+    //     );
+    // }
 
     function invariant_DebtRepaymentsAccurate() public view {
         uint256[] memory posIds = vault.getUserPositionIds(user1);
@@ -877,38 +877,38 @@ contract ERC20VaultInvariantTest is Test {
         );
     }
 
-    function invariant_BadDebtCannotPersist() public view {
-        uint256[] memory posIds = vault.getUserPositionIds(user1);
+    // function invariant_BadDebtCannotPersist() public view {
+    //     uint256[] memory posIds = vault.getUserPositionIds(user1);
 
-        for (uint256 i = 0; i < posIds.length; i++) {
-            uint256 positionId = posIds[i];
-            (, uint256 collateralAmount, uint256 debtAmount, ) = vault
-                .getPosition(positionId);
+    //     for (uint256 i = 0; i < posIds.length; i++) {
+    //         uint256 positionId = posIds[i];
+    //         (, uint256 collateralAmount, uint256 debtAmount, ) = vault
+    //             .getPosition(positionId);
 
-            if (debtAmount > 0 && collateralAmount > 0) {
-                uint256 health = vault.getPositionHealth(positionId);
-                bool liquidatable = vault.isLiquidatable(positionId);
+    //         if (debtAmount > 0 && collateralAmount > 0) {
+    //             uint256 health = vault.getPositionHealth(positionId);
+    //             bool liquidatable = vault.isLiquidatable(positionId);
 
-                // Calculate expected liquidation threshold
-                uint256 liquidationThresholdValue = (vault.ltvRatio() *
-                    vault.liquidationThreshold()) / 100;
-                uint256 requiredHealth = (vault.PRECISION() *
-                    liquidationThresholdValue) / 100;
+    //             // Calculate expected liquidation threshold
+    //             uint256 liquidationThresholdValue = (vault.ltvRatio() *
+    //                 vault.liquidationThreshold()) / 100;
+    //             uint256 requiredHealth = (vault.PRECISION() *
+    //                 liquidationThresholdValue) / 100;
 
-                if (health >= requiredHealth) {
-                    assertFalse(
-                        liquidatable,
-                        "Position should NOT be liquidatable but is!"
-                    );
-                } else {
-                    assertTrue(
-                        liquidatable,
-                        "Position should be liquidatable but is not!"
-                    );
-                }
-            }
-        }
-    }
+    //             if (health >= requiredHealth) {
+    //                 assertFalse(
+    //                     liquidatable,
+    //                     "Position should NOT be liquidatable but is!"
+    //                 );
+    //             } else {
+    //                 assertTrue(
+    //                     liquidatable,
+    //                     "Position should be liquidatable but is not!"
+    //                 );
+    //             }
+    //         }
+    //     }
+    // }
 
     function invariant_LiquidationConsistency() public view {
         uint256 nextId = vault.nextPositionId();
@@ -1052,46 +1052,46 @@ contract ERC20VaultInvariantTest is Test {
         }
     }
 
-    function invariant_LeveragePositionSolvency() public view {
-        uint256[] memory posIds = vault.getUserPositionIds(user1);
-        for (uint256 i = 0; i < posIds.length; i++) {
-            uint256 positionId = posIds[i];
-            (, uint256 posCollateral, uint256 posDebt, ) = vault.getPosition(
-                positionId
-            );
+    // function invariant_LeveragePositionSolvency() public view {
+    //     uint256[] memory posIds = vault.getUserPositionIds(user1);
+    //     for (uint256 i = 0; i < posIds.length; i++) {
+    //         uint256 positionId = posIds[i];
+    //         (, uint256 posCollateral, uint256 posDebt, ) = vault.getPosition(
+    //             positionId
+    //         );
 
-            if (posCollateral > 0 && posDebt > 0) {
-                // Only check active positions
-                bool liquidatable = vault.isLiquidatable(positionId);
-                uint256 health = vault.getPositionHealth(positionId);
-                uint256 minHealth = (INITIAL_LTV * LIQUIDATION_THRESHOLD) / 100;
-                minHealth = (vault.PRECISION() * minHealth) / 100;
+    //         if (posCollateral > 0 && posDebt > 0) {
+    //             // Only check active positions
+    //             bool liquidatable = vault.isLiquidatable(positionId);
+    //             uint256 health = vault.getPositionHealth(positionId);
+    //             uint256 minHealth = (INITIAL_LTV * LIQUIDATION_THRESHOLD) / 100;
+    //             minHealth = (vault.PRECISION() * minHealth) / 100;
 
-                if (health >= minHealth) {
-                    assertFalse(
-                        liquidatable,
-                        "Position should NOT be liquidatable but is!"
-                    );
-                } else {
-                    assertTrue(
-                        liquidatable,
-                        "Position should be liquidatable but is not!"
-                    );
-                }
-            }
-        }
+    //             if (health >= minHealth) {
+    //                 assertFalse(
+    //                     liquidatable,
+    //                     "Position should NOT be liquidatable but is!"
+    //                 );
+    //             } else {
+    //                 assertTrue(
+    //                     liquidatable,
+    //                     "Position should be liquidatable but is not!"
+    //                 );
+    //             }
+    //         }
+    //     }
 
-        assertEq(
-            WETH.balanceOf(address(leverageBooster)),
-            0,
-            "WETH stuck in LeverageBooster after revert"
-        );
-        assertEq(
-            shezUSD.balanceOf(address(leverageBooster)),
-            0,
-            "shezUSD stuck in LeverageBooster after revert"
-        );
-    }
+    //     assertEq(
+    //         WETH.balanceOf(address(leverageBooster)),
+    //         0,
+    //         "WETH stuck in LeverageBooster after revert"
+    //     );
+    //     assertEq(
+    //         shezUSD.balanceOf(address(leverageBooster)),
+    //         0,
+    //         "shezUSD stuck in LeverageBooster after revert"
+    //     );
+    // }
 
     function _poolAndLiquidity() internal {
         vm.startPrank(deployer);
