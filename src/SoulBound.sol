@@ -16,11 +16,7 @@ contract SoulBound is ERC721 {
     }
 
     function burn(uint256 tokenId) external {
-        require(
-            msg.sender == vault || _ownerOf(tokenId) == msg.sender,
-            "Only vault or owner of token can burn"
-        );
-        // _update(address(0), tokenId, _msgSender());
+        require(msg.sender == vault, "Only vault can burn");
         _burn(tokenId);
     }
 

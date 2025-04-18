@@ -1865,4 +1865,93 @@ contract ERC20VaultTest is Test {
         vm.expectRevert(InterestCollector.NoInterestToCollect.selector);
         interestCollector.withdrawInterest(address(shezUSD));
     }
+
+    function test_SoulBoundUnauthorizedReverts() public {
+        SoulBound soulBound = vault.soulBoundToken();
+
+        vm.expectRevert("Only vault can mint");
+        soulBound.mint(user1, 1);
+
+        vm.expectRevert("Only vault can burn");
+        soulBound.burn(1);
+    }
+
+    function test_SoulBoundTransferReverts() public {
+        vm.startPrank(user1);
+        uint256 collateralAmount = 1000 ether;
+        uint256 debtAmount = 500 ether;
+        WETH.approve(address(vault), collateralAmount);
+        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vm.stopPrank();
+
+        uint256 positionId = vault.nextPositionId() - 1;
+        SoulBound soulBound = vault.soulBoundToken();
+
+        vm.expectRevert("Soul-bound tokens cannot be transferred");
+        soulBound.transferFrom(user1, user2, positionId);
+
+        vm.expectRevert("Soul-bound tokens cannot be transferred");
+        soulBound.safeTransferFrom(user1, user2, positionId, "");
+    }
+
+    function test_OpenPositionZeroFeeReverts() public {
+        vm.startPrank(user1);
+        uint256 collateralAmount = 10; // Very small amount to make fee = 0
+        uint256 debtAmount = 5;
+
+        WETH.approve(address(vault), collateralAmount);
+        vm.expectRevert(ERC20Vault.InsufficientFee.selector);
+        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vm.stopPrank();
+    }
+
+    function test_BorrowForAndAddCollateralFor() public {
+        vm.startPrank(user1);
+        uint256 collateralAmount = 1000 ether;
+        uint256 debtAmount = 500 ether;
+        WETH.approve(address(vault), collateralAmount);
+        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vm.stopPrank();
+
+        uint256 positionId = vault.nextPositionId() - 1;
+
+        // Grant LEVERAGE_ROLE to user2
+        vm.startPrank(deployer);
+        vault.grantRole(vault.LEVERAGE_ROLE(), user2);
+        vm.stopPrank();
+
+        // Test addCollateralFor
+        vm.startPrank(user2);
+        uint256 additionalCollateral = 200 ether;
+        WETH.approve(address(vault), additionalCollateral);
+        vault.addCollateralFor(positionId, user1, additionalCollateral);
+        vm.stopPrank();
+
+        (, uint256 posCollateral, , ) = vault.getPosition(positionId);
+        uint256 fee = (collateralAmount * MINT_FEE) / 100;
+        assertEq(
+            posCollateral,
+            collateralAmount - fee + additionalCollateral,
+            "Collateral should increase"
+        );
+
+        // Test borrowFor
+        vm.startPrank(user2);
+        uint256 additionalDebt = 100 ether;
+        vault.borrowFor(positionId, user1, additionalDebt);
+        vm.stopPrank();
+
+        (, , uint256 posDebt, ) = vault.getPosition(positionId);
+        assertEq(posDebt, debtAmount + additionalDebt, "Debt should increase");
+    }
+
+    function test_SetDoNotMint() public {
+        vm.startPrank(user1);
+        vault.setDoNotMint(true);
+        assertTrue(vault.getDoNotMint(user1), "doNotMint should be true");
+
+        vault.setDoNotMint(false);
+        assertFalse(vault.getDoNotMint(user1), "doNotMint should be false");
+        vm.stopPrank();
+    }
 }
