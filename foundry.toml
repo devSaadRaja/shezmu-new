@@ -10,7 +10,7 @@ solc_version = "0.8.26"
 evm_version = "cancun"
 
 [invariant]
-runs = 50 # 500
+runs = 100 # 500
 depth = 10 # 15
 show_metrics = true
 fail_on_revert = true
