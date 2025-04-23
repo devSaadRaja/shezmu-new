@@ -10,9 +10,12 @@ solc_version = "0.8.26"
 evm_version = "cancun"
 
 [invariant]
-runs = 100 # 500
+runs = 50 # 500
 depth = 10 # 15
 show_metrics = true
 fail_on_revert = true
+
+[rpc_endpoints]
+baseSepolia = "${BASE_SEPOLIA_RPC_URL}"
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

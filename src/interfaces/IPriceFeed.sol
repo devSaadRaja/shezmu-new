@@ -14,4 +14,6 @@ interface IPriceFeed {
         );
 
     function decimals() external view returns (uint8);
+
+    function setPrice(int256 price) external;
 }
