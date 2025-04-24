@@ -89,18 +89,19 @@ contract DeployScript is Script {
         console.log("ShezUSD PriceFeed:", address(shezUSDPriceFeed));
     }
 
-    // * ADDRESSES
-    // ERC20Vault: 0x81E5e0f4188C9308E7737834359E7fe9D4f28b68
-    // InterestCollector: 0xBa266f67C7812e53bD2F15A94672692464a7C8e4
-    // ShezUSD: 0x33BB0E90D053F771aD8DaEf18f48ED135737428D
-    // WETH PriceFeed: 0xd211a1D78A369dBF28fC4a8FD6c0Ef9058856D07
-    // ShezUSD PriceFeed: 0x06593e36a219415dc69a4C1CA99D3BDde98e3825
+    // * BASE SEPOLIA ADDRESSES
+    // ERC20Vault: 0x00787f613037a4de42B5c7A8d4303f0D14907821
+    // InterestCollector: 0x36a0308f45dbA3db61F12eC95a69a39C17dFF71B
+    // WETH: 0x22f6b02Fe1542B722d10580FE85Acf027D2D7aB4
+    // ShezUSD: 0x239b5ded987a738D1bfDaD29782AC4cfC00442e7
+    // WETH PriceFeed: 0x5B984aaA085B418d810D9547e2b00EDC9FB092F1
+    // ShezUSD PriceFeed: 0x2A4bEC7093DAA268695Dd584ee38e3A49aF30204
 
     function init() external {
         IERC20Vault erc20Vault = IERC20Vault(
-            0x81E5e0f4188C9308E7737834359E7fe9D4f28b68
+            0x00787f613037a4de42B5c7A8d4303f0D14907821
         );
-        EERC20 weth = EERC20(0x505B954533236F6d9b1BD7fd166878d33aDdaf94);
+        EERC20 weth = EERC20(0x22f6b02Fe1542B722d10580FE85Acf027D2D7aB4);
 
         vm.startBroadcast(privateKeyUser1);
 
@@ -120,11 +121,11 @@ contract DeployScript is Script {
 
     function updatePrice() external {
         IPriceFeed WETHPriceFeed = IPriceFeed(
-            0xd211a1D78A369dBF28fC4a8FD6c0Ef9058856D07
+            0x5B984aaA085B418d810D9547e2b00EDC9FB092F1
         );
 
         vm.startBroadcast(privateKeyDeployer);
-        WETHPriceFeed.setPrice(int256(200 * 10 ** 8)); // $1
+        WETHPriceFeed.setPrice(int256(1 * 10 ** 8)); // $1
         vm.stopBroadcast();
     }
 }
