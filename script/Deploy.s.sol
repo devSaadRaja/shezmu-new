@@ -99,29 +99,31 @@ contract DeployScript is Script {
 
     function init() external {
         IERC20Vault erc20Vault = IERC20Vault(
-            0x00787f613037a4de42B5c7A8d4303f0D14907821
+            0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9
         );
-        EERC20 weth = EERC20(0x22f6b02Fe1542B722d10580FE85Acf027D2D7aB4);
+        EERC20 weth = EERC20(0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0);
 
         vm.startBroadcast(privateKeyUser1);
 
-        uint256 collateralAmount = 1000 ether;
-        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / 100;
+        for (uint i = 0; i < 1500; i++) {
+            uint256 collateralAmount = 1000 ether;
+            uint256 debtAmount = (collateralAmount * INITIAL_LTV) / 100;
 
-        weth.approve(address(erc20Vault), collateralAmount);
-        erc20Vault.openPosition(
-            user1,
-            address(weth),
-            collateralAmount,
-            debtAmount
-        );
+            weth.approve(address(erc20Vault), collateralAmount);
+            erc20Vault.openPosition(
+                user1,
+                address(weth),
+                collateralAmount,
+                debtAmount
+            );
+        }
 
         vm.stopBroadcast();
     }
 
     function updatePrice() external {
         IPriceFeed WETHPriceFeed = IPriceFeed(
-            0x5B984aaA085B418d810D9547e2b00EDC9FB092F1
+            0x5FbDB2315678afecb367f032d93F642f64180aa3
         );
 
         vm.startBroadcast(privateKeyDeployer);
