@@ -89,13 +89,13 @@ contract DeployScript is Script {
         console.log("ShezUSD PriceFeed:", address(shezUSDPriceFeed));
     }
 
-    // * BASE SEPOLIA ADDRESSES
-    // ERC20Vault: 0x00787f613037a4de42B5c7A8d4303f0D14907821
-    // InterestCollector: 0x36a0308f45dbA3db61F12eC95a69a39C17dFF71B
-    // WETH: 0x22f6b02Fe1542B722d10580FE85Acf027D2D7aB4
-    // ShezUSD: 0x239b5ded987a738D1bfDaD29782AC4cfC00442e7
-    // WETH PriceFeed: 0x5B984aaA085B418d810D9547e2b00EDC9FB092F1
-    // ShezUSD PriceFeed: 0x2A4bEC7093DAA268695Dd584ee38e3A49aF30204
+    // * LOCAL ADDRESSES
+    // ERC20Vault: 0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9
+    // InterestCollector: 0x5FC8d32690cc91D4c39d9d3abcBD16989F875707
+    // WETH: 0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0
+    // ShezUSD: 0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9
+    // WETH PriceFeed: 0x5FbDB2315678afecb367f032d93F642f64180aa3
+    // ShezUSD PriceFeed: 0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512
 
     function init() external {
         IERC20Vault erc20Vault = IERC20Vault(

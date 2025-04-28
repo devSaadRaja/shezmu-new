@@ -1954,4 +1954,70 @@ contract ERC20VaultTest is Test {
         assertFalse(vault.getDoNotMint(user1), "doNotMint should be false");
         vm.stopPrank();
     }
+
+    function testBatchLiquidateSinglePosition() public {
+        vm.startPrank(user1);
+        uint256 collateralAmount = 1000 ether;
+        uint256 debtAmount = 500 ether;
+        WETH.approve(address(vault), collateralAmount);
+        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vm.stopPrank();
+
+        uint256[] memory positionIds = new uint256[](1);
+        positionIds[0] = vault.nextPositionId() - 1;
+
+        wethPriceFeed.setPrice(1 * 10 ** 8); // Drop to $1
+
+        vm.prank(user2);
+        vault.batchLiquidate(positionIds);
+
+        assertEq(shezUSD.balanceOf(user1), 0, "Debt not burned");
+        assertEq(vault.totalDebt(), 0, "Total debt not updated");
+    }
+
+    function testBatchLiquidateMultiplePositions() public {
+        vm.startPrank(user1);
+        WETH.approve(address(vault), 300 ether);
+        vault.openPosition(user1, address(WETH), 100 ether, 50 ether); // Position 1
+        vault.openPosition(user1, address(WETH), 200 ether, 100 ether); // Position 2
+        vm.stopPrank();
+
+        wethPriceFeed.setPrice(1 * 10 ** 8); // Drop to $1
+
+        uint256[] memory positionIds = new uint256[](2);
+        positionIds[0] = 1;
+        positionIds[1] = 2;
+
+        vm.prank(user2);
+        vault.batchLiquidate(positionIds);
+
+        assertEq(shezUSD.balanceOf(user1), 0, "User1 debt not burned");
+        assertEq(shezUSD.balanceOf(user2), 0, "User2 debt not burned");
+        assertEq(vault.totalDebt(), 0, "Total debt not updated");
+    }
+
+    function testBatchLiquidateEmptyArray() public {
+        uint256[] memory positionIds = new uint256[](0);
+
+        vm.prank(user2);
+        vm.expectRevert(ERC20Vault.NoPositionsToLiquidate.selector);
+        vault.batchLiquidate(positionIds);
+    }
+
+    function testBatchLiquidateWithSoulBoundToken() public {
+        vm.startPrank(user1);
+        WETH.approve(address(vault), 1000 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether); // Position 1
+        vm.stopPrank();
+
+        wethPriceFeed.setPrice(1 * 10 ** 8); // Drop to $1
+
+        uint256[] memory positionIds = new uint256[](1);
+        positionIds[0] = 1;
+
+        vm.prank(user2);
+        vault.batchLiquidate(positionIds);
+
+        assertFalse(vault.getHasSoulBound(1), "SoulBound flag not cleared");
+    }
 }

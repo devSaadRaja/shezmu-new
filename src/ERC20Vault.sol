@@ -80,6 +80,11 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
     event InterestCollected(uint256 interestAmount);
     event InterestCollectionToggled(bool enabled);
     event PositionDeleted(uint256 indexed positionId);
+    event BatchPositionsLiquidated(
+        uint256[] positionIds,
+        address liquidator,
+        uint256 totalReward
+    );
 
     // ============================================ //
     // ================== ERRORS ================== //
@@ -108,6 +113,7 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
     error InterestCollectorNotSet();
     error InterestCollectionFailed();
     error InsufficientFee();
+    error NoPositionsToLiquidate();
 
     // ================================================= //
     // ================== CONSTRUCTOR ================== //
@@ -527,6 +533,83 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         loanToken.burn(positionOwner, debtAmount);
 
         emit PositionLiquidated(positionId, msg.sender, reward, debtAmount);
+    }
+
+    function batchLiquidate(
+        uint256[] calldata positionIds
+    ) external nonReentrant {
+        if (positionIds.length == 0) revert NoPositionsToLiquidate();
+
+        uint256 totalPenalty = 0;
+        uint256 totalReward = 0;
+
+        for (uint256 i = 0; i < positionIds.length; i++) {
+            uint256 positionId = positionIds[i];
+            Position storage position = positions[positionId];
+            address positionOwner = position.owner;
+
+            if (positionOwner == address(0)) continue;
+            if (!isLiquidatable(positionId)) continue;
+
+            _collectInterestIfAvailable(positionId);
+
+            uint256 collateralAmount = position.collateralAmount;
+            uint256 debtAmount = position.debtAmount;
+
+            uint256 reward = (collateralAmount * liquidatorReward) / 100;
+            uint256 penalty = (collateralAmount * penaltyRate) / 100;
+            uint256 remainingCollateral = collateralAmount - reward - penalty;
+
+            totalPenalty += penalty;
+            totalReward += reward;
+
+            // Update balances
+            collateralBalances[positionOwner] -= collateralAmount;
+            loanBalances[positionOwner] -= debtAmount;
+            totalDebt -= debtAmount;
+
+            if (remainingCollateral > 0) {
+                if (
+                    !collateralToken.transfer(
+                        positionOwner,
+                        remainingCollateral
+                    )
+                ) {
+                    revert LiquidationFailed();
+                }
+            }
+            loanToken.burn(positionOwner, debtAmount);
+
+            // _deletePosition(positionId, positionOwner);
+            if (hasSoulBound[positionId]) {
+                soulBoundToken.burn(positionId);
+                hasSoulBound[positionId] = false;
+            }
+            delete positions[positionId];
+            uint256[] storage userPositions = userPositionIds[positionOwner];
+            for (uint256 j = 0; j < userPositions.length; j++) {
+                if (userPositions[j] == positionId) {
+                    userPositions[j] = userPositions[userPositions.length - 1];
+                    userPositions.pop();
+                    break;
+                }
+            }
+
+            emit PositionDeleted(positionId);
+        }
+
+        if (totalPenalty > 0) {
+            if (!collateralToken.transfer(treasury, totalPenalty)) {
+                revert LiquidationFailed();
+            }
+        }
+        if (totalReward > 0) {
+            if (!collateralToken.transfer(msg.sender, totalReward)) {
+                revert LiquidationFailed();
+            }
+        }
+
+        emit BatchPositionsLiquidated(positionIds, msg.sender, totalReward);
     }
 
     /// @notice Mint interest amount to InterestCollector
