@@ -580,22 +580,7 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
             }
             loanToken.burn(positionOwner, debtAmount);
 
-            // _deletePosition(positionId, positionOwner);
-            if (hasSoulBound[positionId]) {
-                soulBoundToken.burn(positionId);
-                hasSoulBound[positionId] = false;
-            }
-            delete positions[positionId];
-            uint256[] storage userPositions = userPositionIds[positionOwner];
-            for (uint256 j = 0; j < userPositions.length; j++) {
-                if (userPositions[j] == positionId) {
-                    userPositions[j] = userPositions[userPositions.length - 1];
-                    userPositions.pop();
-                    break;
-                }
-            }
-
-            emit PositionDeleted(positionId);
+            _deletePosition(positionId, positionOwner);
         }
 
         if (totalPenalty > 0) {

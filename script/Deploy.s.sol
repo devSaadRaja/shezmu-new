@@ -105,7 +105,7 @@ contract DeployScript is Script {
 
         vm.startBroadcast(privateKeyUser1);
 
-        for (uint i = 0; i < 1500; i++) {
+        for (uint i = 0; i < 1517; i++) {
             uint256 collateralAmount = 1000 ether;
             uint256 debtAmount = (collateralAmount * INITIAL_LTV) / 100;
 
