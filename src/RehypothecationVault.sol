@@ -7,34 +7,8 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 
-interface IPoolProxy {
-    function supply(
-        address asset,
-        uint256 amount,
-        address onBehalfOf,
-        uint16 referralCode
-    ) external;
-
-    function withdraw(
-        address asset,
-        uint256 amount,
-        address to
-    ) external returns (uint256);
-}
-
-interface IRewardsController {
-    function claimRewards(
-        address[] calldata assets,
-        uint256 amount,
-        address to,
-        address reward
-    ) external returns (uint256);
-
-    function getUserAccruedRewards(
-        address user,
-        address reward
-    ) external returns (uint256);
-}
+import {IPool} from "./interfaces/aave-v3/IPool.sol";
+import {IRewardsController} from "./interfaces/aave-v3/IRewardsController.sol";
 
 contract RehypothecationVault is
     Initializable,
@@ -51,8 +25,6 @@ contract RehypothecationVault is
     }
 
     mapping(uint256 => YieldData) public yields; // Tracks yield data per position
-    mapping(address => bool) public whitelistedProtocols; // Whitelist of low-risk protocols
-    mapping(uint256 => address) public positionProtocols; // Maps position to its yield protocol
 
     uint256 public constant BORROWER_YIELD_SHARE = 7500; // 75% yield to borrower (bips)
     uint256 public constant PROTOCOL_YIELD_SHARE = 2500; // 25% yield to protocol (bips)
@@ -62,33 +34,28 @@ contract RehypothecationVault is
     address public treasury;
     IERC20 public collateralToken;
     IERC20 public rewardToken;
-    IPoolProxy public poolProxy;
+    IPool public pool;
     IRewardsController public rewardsController;
 
     // ============================================ //
     // ================== EVENTS ================== //
     // ============================================ //
 
-    event DepositedToVault(
-        uint256 indexed positionId,
-        uint256 amount,
-        address protocol
-    );
+    event Deposit(uint256 indexed positionId, uint256 amount);
     event YieldClaimed(
         uint256 indexed positionId,
         uint256 borrowerAmount,
         uint256 protocolAmount
     );
-    event WithdrawnFromVault(uint256 indexed positionId, uint256 amount);
-    event ProtocolWhitelisted(address indexed protocol, bool status);
-    event YieldProxyUpdated(address indexed newProxy);
+    event Withdraw(uint256 indexed positionId);
+    event PoolUpdated(address indexed newProxy);
+    event RewardsControllerUpdated(address indexed newController);
 
     // ============================================ //
     // ================== ERRORS ================== //
     // ============================================ //
 
     error Unauthorized();
-    error ProtocolNotWhitelisted();
 
     // =============================================== //
     // ================== MODIFIERS ================== //
@@ -112,13 +79,13 @@ contract RehypothecationVault is
     /// @param _treasury Address of the treasury
     /// @param _collateralToken Address of the collateral token
     /// @param _rewardToken Address of the reward token
-    /// @param _yieldProxy Address of the yield proxy contract
+    /// @param _pool Address of the yield proxy contract
     /// @param _rewardController Address of the reward controller contract
     function initialize(
         address _treasury,
         address _collateralToken,
         address _rewardToken,
-        address _yieldProxy,
+        address _pool,
         address _rewardController
     ) external initializer {
         __Ownable_init(msg.sender);
@@ -127,7 +94,7 @@ contract RehypothecationVault is
         treasury = _treasury;
         collateralToken = IERC20(_collateralToken);
         rewardToken = IERC20(_rewardToken);
-        poolProxy = IPoolProxy(_yieldProxy);
+        pool = IPool(_pool);
         rewardsController = IRewardsController(_rewardController);
     }
 
@@ -145,7 +112,7 @@ contract RehypothecationVault is
     //         return 0;
     //     }
     //     return
-    //         poolProxy.getProtocolYield(protocol) - yieldData.accumulatedYield;
+    //         pool.getProtocolYield(protocol) - yieldData.accumulatedYield;
     // }
 
     // ===================================================== //
@@ -155,23 +122,21 @@ contract RehypothecationVault is
     /// @notice Deposits collateral into the vault and forwards it to the specified yield protocol
     /// @param positionId Unique identifier for the position
     /// @param amount Amount of collateral to deposit
-    /// @param protocol Address of the whitelisted yield protocol
     function deposit(
         uint256 positionId,
-        uint256 amount,
-        address protocol
+        uint256 amount
     ) external nonReentrant onlyVault {
-        // onlyWhitelisted(protocol)
         require(amount > 0, "Amount must be greater than 0");
         require(yields[positionId].amount == 0, "Position already active");
 
+        collateralToken.transferFrom(msg.sender, address(this), amount);
+
         yields[positionId] = YieldData({amount: amount, accumulatedYield: 0});
-        positionProtocols[positionId] = protocol;
 
-        // Forward collateral to yield protocol
-        poolProxy.supply(address(collateralToken), amount, address(this), 0);
+        collateralToken.approve(address(pool), amount);
+        pool.supply(address(collateralToken), amount, address(this), 0);
 
-        emit DepositedToVault(positionId, amount, protocol);
+        emit Deposit(positionId, amount);
     }
 
     /// @notice Claims accumulated yield for a position and splits it between borrower and protocol
@@ -180,9 +145,6 @@ contract RehypothecationVault is
     function claimYield(uint256 positionId) external nonReentrant onlyVault {
         YieldData storage yieldData = yields[positionId];
         require(yieldData.amount > 0, "No active position");
-
-        address protocol = positionProtocols[positionId];
-        require(protocol != address(0), "Invalid protocol");
 
         uint256 totalYield = rewardsController.getUserAccruedRewards(
             msg.sender,
@@ -214,40 +176,22 @@ contract RehypothecationVault is
 
     /// @notice Withdraws collateral from a position
     /// @param positionId Unique identifier for the position
-    /// @param amount Amount of collateral to withdraw
-    /// @dev Deletes position data if amount withdrawn equals total position amount
-    function withdraw(
-        uint256 positionId,
-        uint256 amount
-    ) external nonReentrant onlyVault {
-        YieldData storage yieldData = yields[positionId];
-        require(yieldData.amount >= amount, "Insufficient collateral");
-        require(amount > 0, "Amount must be greater than 0");
-
-        address protocol = positionProtocols[positionId];
-        require(protocol != address(0), "Invalid protocol");
-
+    /// @dev Deletes position data
+    function withdraw(uint256 positionId) external nonReentrant onlyVault {
         // // Update yield before withdrawal
-        // uint256 totalYield = poolProxy.getProtocolYield(protocol) -
+        // uint256 totalYield = pool.getProtocolYield(protocol) -
         //     yieldData.accumulatedYield;
         // yieldData.accumulatedYield += totalYield;
 
-        // Withdraw collateral via proxy
-        uint256 withdrawnAmount = poolProxy.withdraw(
+        uint256 withdrawnAmount = pool.withdraw(
             address(collateralToken),
-            amount, // type(uint256).max
+            type(uint256).max,
             msg.sender
         );
-        require(withdrawnAmount == amount, "Withdrawal amount mismatch");
 
-        // Update position
-        yieldData.amount -= amount;
-        if (yieldData.amount == 0) {
-            delete yields[positionId];
-            delete positionProtocols[positionId];
-        }
+        delete yields[positionId];
 
-        emit WithdrawnFromVault(positionId, amount);
+        emit Withdraw(positionId);
     }
 
     // ===================================================== //
@@ -260,22 +204,19 @@ contract RehypothecationVault is
         vault = _vault;
     }
 
-    /// @notice Updates the whitelist status of a yield protocol
-    /// @param protocol Address of the protocol to whitelist/blacklist
-    /// @param status Boolean indicating whether the protocol should be whitelisted
-    function setProtocolWhitelist(
-        address protocol,
-        bool status
-    ) external onlyOwner {
-        whitelistedProtocols[protocol] = status;
-        emit ProtocolWhitelisted(protocol, status);
-    }
-
     /// @notice Updates the yield proxy contract address
     /// @param newProxy Address of the new yield proxy contract
     function updateYieldProxy(address newProxy) external onlyOwner {
-        require(newProxy != address(0), "Invalid proxy address");
-        poolProxy = IPoolProxy(newProxy);
-        emit YieldProxyUpdated(newProxy);
+        require(newProxy != address(0), "Invalid address");
+        pool = IPool(newProxy);
+        emit PoolUpdated(newProxy);
+    }
+
+    /// @notice Updates the reward controller contract address
+    /// @param newController Address of the new reward controller contract
+    function updateRewardsController(address newController) external onlyOwner {
+        require(newController != address(0), "Invalid address");
+        rewardsController = IRewardsController(newController);
+        emit RewardsControllerUpdated(newController);
     }
 }
