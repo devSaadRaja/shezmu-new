@@ -19,6 +19,14 @@ contract RehypothecationVault is
     // ================== STRUCTURE ================== //
     // =============================================== //
 
+    struct Position {
+        address owner;
+        uint256 principal; // uint256 collateralAmount;
+        // uint256 aTokenAmount;
+        uint256 initialLiquidityIndex;
+        uint256 supplyTime;
+    }
+
     uint256 public constant BORROWER_YIELD_SHARE = 7500; // 75% yield to borrower (bips)
     uint256 public constant PROTOCOL_YIELD_SHARE = 2500; // 25% yield to protocol (bips)
     uint256 public constant DENOMINATOR = 10000; // For percentage calculations (bips)
@@ -32,6 +40,7 @@ contract RehypothecationVault is
     IRewardsController public rewardsController;
 
     mapping(uint256 => uint256) public amounts; // Tracks collateral amount per position
+    mapping(uint256 => Position) positions;
 
     // ============================================ //
     // ================== EVENTS ================== //
@@ -100,6 +109,22 @@ contract RehypothecationVault is
     // ================== VIEW FUNCTIONS ================== //
     // ==================================================== //
 
+    // /// @notice Returns the position details for a given position ID
+    // /// @param positionId The ID of the position to query
+    // /// @return owner The address of the position owner
+    // /// @return collateralAmount The amount of collateral in the position
+    // /// @return aTokenAmount The amount of aTokens for this position
+    // function getPosition(
+    //     uint256 positionId
+    // ) external view returns (address, uint256, uint256) {
+    //     Position memory position = positions[positionId];
+    //     return (
+    //         position.owner,
+    //         position.collateralAmount,
+    //         position.aTokenAmount
+    //     );
+    // }
+
     /// @notice Retrieves the accumulated rewards for a specific user
     /// @param user Address of the user to check rewards for
     /// @return uint256 Amount of accumulated rewards
@@ -129,30 +154,56 @@ contract RehypothecationVault is
     /// @param amount Amount of collateral to deposit
     function deposit(
         uint256 positionId,
+        address user,
         uint256 amount
     ) external nonReentrant onlyVault {
         if (amount == 0) revert ZeroAmount();
         if (amounts[positionId] > 0) revert AlreadyActive();
+        // if (positions[positionId].collateralAmount > 0) revert AlreadyActive();
 
-        collateralToken.transferFrom(msg.sender, address(this), amount);
+        collateralToken.transferFrom(user, address(this), amount);
 
         amounts[positionId] = amount;
+        // positions[positionId].owner = user;
+        // positions[positionId].collateralAmount = amount;
+
+        // uint256 balanceBefore = aToken.balanceOf(address(this));
 
         collateralToken.approve(address(pool), amount);
         pool.supply(address(collateralToken), amount, address(this), 0);
+
+        // positions[positionId].aTokenAmount =
+        //     aToken.balanceOf(address(this)) -
+        //     balanceBefore;
 
         emit Deposit(positionId, amount);
     }
 
     /// @notice Withdraws collateral from a position
     /// @param positionId Unique identifier for the position
-    function withdraw(uint256 positionId) external nonReentrant onlyVault {
-        uint256 withdrawnAmount = pool.withdraw(
+    function withdraw(
+        uint256 positionId,
+        address user
+    ) external nonReentrant onlyVault {
+        uint256 balanceBefore = aToken.balanceOf(address(this));
+
+        pool.withdraw(
             address(collateralToken),
-            type(uint256).max,
+            amounts[positionId],
             address(this)
         );
-        uint256 interest = withdrawnAmount - amounts[positionId];
+
+        uint256 newBalance = aToken.balanceOf(address(this));
+        uint256 interestATokens = balanceBefore - newBalance;
+        uint256 interest = pool.withdraw(
+            address(collateralToken),
+            interestATokens,
+            address(this)
+        );
+
+        // uint256 interest = withdrawnAmount - amounts[positionId];
+        // uint256 interest = withdrawnAmount -
+        //     positions[positionId].collateralAmount;
 
         uint256 borrowerAmount = (interest * BORROWER_YIELD_SHARE) /
             DENOMINATOR;
@@ -160,10 +211,7 @@ contract RehypothecationVault is
             DENOMINATOR;
 
         collateralToken.transfer(treasury, protocolAmount);
-        collateralToken.transfer(
-            msg.sender,
-            borrowerAmount + amounts[positionId]
-        );
+        collateralToken.transfer(user, borrowerAmount + amounts[positionId]);
 
         amounts[positionId] = 0;
 
@@ -172,7 +220,7 @@ contract RehypothecationVault is
 
     /// @notice Claims accumulated reward for a user and splits it between borrower and protocol
     /// @dev Splits yield according to BORROWER_YIELD_SHARE and PROTOCOL_YIELD_SHARE
-    function claimReward() external nonReentrant onlyVault {
+    function claimReward(address user) external nonReentrant onlyVault {
         uint256 totalReward = this.getUserRewards(address(this));
         if (totalReward == 0) revert ZeroReward();
 
@@ -190,7 +238,7 @@ contract RehypothecationVault is
         uint256 protocolAmount = (totalReward * PROTOCOL_YIELD_SHARE) /
             DENOMINATOR;
 
-        rewardToken.transfer(msg.sender, borrowerAmount);
+        rewardToken.transfer(user, borrowerAmount);
         rewardToken.transfer(treasury, protocolAmount);
 
         emit RewardClaimed(borrowerAmount, protocolAmount);
