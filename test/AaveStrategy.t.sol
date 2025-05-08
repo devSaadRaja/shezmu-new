@@ -10,9 +10,9 @@ import {IPriceFeed} from "../src/interfaces/IPriceFeed.sol";
 import {IRewardsController} from "../src/interfaces/aave-v3/IRewardsController.sol";
 import {IPoolDataProvider} from "../src/interfaces/aave-v3/IPoolDataProvider.sol";
 
-import {RehypothecationVault} from "../src/RehypothecationVault.sol";
+import {AaveStrategy} from "../src/strategies/AaveStrategy.sol";
 
-contract RehypothecationVaultTest is Test {
+contract AaveStrategyTest is Test {
     // =============================================== //
     // ================== STRUCTURE ================== //
     // =============================================== //
@@ -24,7 +24,7 @@ contract RehypothecationVaultTest is Test {
     IPoolDataProvider IPOOL_DATA_PROVIDER =
         IPoolDataProvider(0x497a1994c46d4f6C864904A9f1fac6328Cb7C8a6);
 
-    RehypothecationVault rehypoVault;
+    AaveStrategy aaveStrategy;
 
     IERC20 collateralToken; // collateral
     IERC20 aToken; // just like LP tokens
@@ -56,8 +56,8 @@ contract RehypothecationVaultTest is Test {
 
         deal(address(collateralToken), deployer, 1_000_000_000 ether);
 
-        rehypoVault = new RehypothecationVault();
-        rehypoVault.initialize(
+        aaveStrategy = new AaveStrategy();
+        aaveStrategy.initialize(
             treasury,
             address(collateralToken),
             address(aToken),
@@ -66,7 +66,7 @@ contract RehypothecationVaultTest is Test {
             address(INCENTIVES_V3)
         );
 
-        rehypoVault.setVault(user1);
+        aaveStrategy.setVault(user1);
 
         collateralToken.transfer(user1, 2_000_000 ether);
         collateralToken.transfer(user2, 2_000_000 ether);
@@ -111,12 +111,14 @@ contract RehypothecationVaultTest is Test {
         // console.log(ltv, "<<< ltv");
         // console.log(healthFactor, "<<< healthFactor");
 
-        (, , , , uint256 reserveFactor, , , , , ) = IPOOL_DATA_PROVIDER
-            .getReserveConfigurationData(address(collateralToken));
-        console.log(reserveFactor, "<<< reserveFactor");
-        console.log();
+        // (, , , , uint256 reserveFactor, , , , , ) = IPOOL_DATA_PROVIDER
+        //     .getReserveConfigurationData(address(collateralToken));
+        // console.log(reserveFactor, "<<< reserveFactor");
 
         uint256 principal = 1000 ether;
+
+        address[] memory assets = new address[](1);
+        assets[0] = address(aToken);
 
         vm.startPrank(user1);
 
@@ -131,33 +133,25 @@ contract RehypothecationVaultTest is Test {
             IERC20(collateralToken).balanceOf(user1),
             "<<< collateralToken.balanceOf(user1)"
         );
-        // console.log(aToken.balanceOf(user2), "<<< aToken.balanceOf(user2)");
-        // console.log(
-        //     IERC20(collateralToken).balanceOf(user2),
-        //     "<<< collateralToken.balanceOf(user2)"
-        // );
-
-        DataTypes.ReserveDataLegacy memory reserveData = POOL_V3.getReserveData(
-            address(collateralToken)
-        );
-        uint256 initialIndex = reserveData.liquidityIndex;
+        console.log(aToken.balanceOf(user2), "<<< aToken.balanceOf(user2)");
         console.log(
-            reserveData.liquidityIndex,
-            "<<< reserveData.liquidityIndex"
-        );
-        console.log(
-            reserveData.currentLiquidityRate,
-            "<<< reserveData.currentLiquidityRate"
+            IERC20(collateralToken).balanceOf(user2),
+            "<<< collateralToken.balanceOf(user2)"
         );
 
         // !
-        // collateralToken.approve(address(rehypoVault), 1000 ether);
-        // rehypoVault.deposit(1, user1, 1000 ether);
+        // collateralToken.approve(address(aaveStrategy), principal);
+        // aaveStrategy.deposit(1, user1, principal);
 
-        collateralToken.approve(address(POOL_V3), 1000 ether);
-        POOL_V3.supply(address(collateralToken), 1000 ether, user1, 0);
+        collateralToken.approve(address(POOL_V3), principal);
+        POOL_V3.supply(address(collateralToken), principal, user1, 0);
 
-        // POOL_V3.setUserUseReserveAsCollateral(address(collateralToken), false);
+        POOL_V3.setUserUseReserveAsCollateral(address(collateralToken), false);
+
+        collateralToken.approve(address(POOL_V3), principal);
+        POOL_V3.supply(address(collateralToken), principal, user2, 0);
+
+        POOL_V3.setUserUseReserveAsCollateral(address(collateralToken), false);
         // !
 
         console.log();
@@ -167,30 +161,19 @@ contract RehypothecationVaultTest is Test {
             IERC20(collateralToken).balanceOf(user1),
             "<<< collateralToken.balanceOf(user1)"
         );
-        // console.log(
-        //     IERC20(rewardToken).balanceOf(user1),
-        //     "<<< rewardToken.balanceOf(user1)"
-        // );
-        // console.log(aToken.balanceOf(user2), "<<< aToken.balanceOf(user2)");
-        // console.log(
-        //     IERC20(collateralToken).balanceOf(user2),
-        //     "<<< collateralToken.balanceOf(user2)"
-        // );
-        // console.log(
-        //     IERC20(rewardToken).balanceOf(user2),
-        //     "<<< rewardToken.balanceOf(user2)"
-        // );
-
-        reserveData = POOL_V3.getReserveData(address(collateralToken));
         console.log(
-            reserveData.liquidityIndex,
-            "<<< reserveData.liquidityIndex"
+            IERC20(rewardToken).balanceOf(user1),
+            "<<< rewardToken.balanceOf(user1)"
+        );
+        console.log(aToken.balanceOf(user2), "<<< aToken.balanceOf(user2)");
+        console.log(
+            IERC20(collateralToken).balanceOf(user2),
+            "<<< collateralToken.balanceOf(user2)"
         );
         console.log(
-            reserveData.currentLiquidityRate,
-            "<<< reserveData.currentLiquidityRate"
+            IERC20(rewardToken).balanceOf(user2),
+            "<<< rewardToken.balanceOf(user2)"
         );
-        uint256 accruedToTreasury = reserveData.accruedToTreasury;
 
         // !
         vm.warp(block.timestamp + 100 days);
@@ -203,58 +186,60 @@ contract RehypothecationVaultTest is Test {
             IERC20(collateralToken).balanceOf(user1),
             "<<< collateralToken.balanceOf(user1)"
         );
-        // console.log(
-        //     IERC20(rewardToken).balanceOf(user1),
-        //     "<<< rewardToken.balanceOf(user1)"
-        // );
-        // console.log(aToken.balanceOf(user2), "<<< aToken.balanceOf(user2)");
-        // console.log(
-        //     IERC20(collateralToken).balanceOf(user2),
-        //     "<<< collateralToken.balanceOf(user2)"
-        // );
-        // console.log(
-        //     IERC20(rewardToken).balanceOf(user2),
-        //     "<<< rewardToken.balanceOf(user2)"
-        // );
-
-        // address[] memory assets = new address[](1);
-        // assets[0] = address(aToken);
-        // console.log(
-        //     INCENTIVES_V3.getUserRewards(assets, user1, address(rewardToken)),
-        //     "<<< USER REWARDS"
-        // );
-        // console.log(
-        //     INCENTIVES_V3.getUserAccruedRewards(user1, address(rewardToken)),
-        //     "<<< ACCRUED REWARDS"
-        // );
-        // console.log(
-        //     INCENTIVES_V3.getUserRewards(assets, user2, address(rewardToken)),
-        //     "<<< USER REWARDS 2"
-        // );
-        // console.log(
-        //     INCENTIVES_V3.getUserAccruedRewards(user2, address(rewardToken)),
-        //     "<<< ACCRUED REWARDS 2"
-        // );
-        // INCENTIVES_V3.claimRewards(
-        //     assets,
-        //     type(uint256).max,
-        //     user2,
-        //     address(rewardToken)
-        // );
-
-        reserveData = POOL_V3.getReserveData(address(collateralToken));
         console.log(
-            reserveData.liquidityIndex,
-            "<<< reserveData.liquidityIndex"
+            IERC20(rewardToken).balanceOf(user1),
+            "<<< rewardToken.balanceOf(user1)"
+        );
+        console.log(aToken.balanceOf(user2), "<<< aToken.balanceOf(user2)");
+        console.log(
+            IERC20(collateralToken).balanceOf(user2),
+            "<<< collateralToken.balanceOf(user2)"
         );
         console.log(
-            reserveData.currentLiquidityRate,
-            "<<< reserveData.currentLiquidityRate"
+            IERC20(rewardToken).balanceOf(user2),
+            "<<< rewardToken.balanceOf(user2)"
         );
+
+        console.log(
+            INCENTIVES_V3.getUserRewards(assets, user1, address(rewardToken)),
+            "<<< USER REWARDS"
+        );
+        console.log(
+            INCENTIVES_V3.getUserAccruedRewards(user1, address(rewardToken)),
+            "<<< ACCRUED REWARDS"
+        );
+        console.log(
+            INCENTIVES_V3.getUserRewards(assets, user2, address(rewardToken)),
+            "<<< USER REWARDS 2"
+        );
+        console.log(
+            INCENTIVES_V3.getUserAccruedRewards(user2, address(rewardToken)),
+            "<<< ACCRUED REWARDS 2"
+        );
+
+        DataTypes.ReserveDataLegacy memory reserveData = POOL_V3.getReserveData(
+            address(collateralToken)
+        );
+        console.log();
+        console.log(principal, "<<< principal");
+        uint256 timeElapsed = block.timestamp - reserveData.lastUpdateTimestamp;
+        console.log(timeElapsed, "<<< timeElapsed");
+        uint256 currentLiquidityRate = reserveData.currentLiquidityRate;
+        console.log(currentLiquidityRate, "<<< currentLiquidityRate");
+        uint256 interest = (principal * currentLiquidityRate * timeElapsed) /
+            (365 * 24 * 3600 * 1e27);
+        console.log(interest, "<<< interest");
 
         // !
-        // rehypoVault.withdraw(1);
-        POOL_V3.withdraw(address(collateralToken), type(uint256).max, user1); // type(uint256).max
+        // aaveStrategy.withdraw(1);
+        POOL_V3.withdraw(address(collateralToken), principal + interest, user1); // type(uint256).max
+
+        INCENTIVES_V3.claimRewards(
+            assets,
+            type(uint256).max,
+            user1,
+            address(rewardToken)
+        );
         // !
 
         console.log();
@@ -264,76 +249,26 @@ contract RehypothecationVaultTest is Test {
             IERC20(collateralToken).balanceOf(user1),
             "<<< collateralToken.balanceOf(user1)"
         );
-        // console.log(
-        //     IERC20(rewardToken).balanceOf(user1),
-        //     "<<< rewardToken.balanceOf(user1)"
-        // );
-        // console.log(aToken.balanceOf(user2), "<<< aToken.balanceOf(user2)");
-        // console.log(
-        //     IERC20(collateralToken).balanceOf(user2),
-        //     "<<< collateralToken.balanceOf(user2)"
-        // );
-        // console.log(
-        //     IERC20(rewardToken).balanceOf(user2),
-        //     "<<< rewardToken.balanceOf(user2)"
-        // );
-
-        reserveData = POOL_V3.getReserveData(address(collateralToken));
         console.log(
-            reserveData.liquidityIndex,
-            "<<< reserveData.liquidityIndex"
+            IERC20(rewardToken).balanceOf(user1),
+            "<<< rewardToken.balanceOf(user1)"
+        );
+        console.log(aToken.balanceOf(user2), "<<< aToken.balanceOf(user2)");
+        console.log(
+            IERC20(collateralToken).balanceOf(user2),
+            "<<< collateralToken.balanceOf(user2)"
         );
         console.log(
-            reserveData.currentLiquidityRate,
-            "<<< reserveData.currentLiquidityRate"
+            IERC20(rewardToken).balanceOf(user2),
+            "<<< rewardToken.balanceOf(user2)"
         );
-        console.log(
-            reserveData.accruedToTreasury - accruedToTreasury,
-            "<<< reserveData.accruedToTreasury - accruedToTreasury"
-        );
-
-        console.log();
-        console.log(initialIndex, "<<< initialIndex");
-        console.log(
-            reserveData.liquidityIndex,
-            "<<< reserveData.liquidityIndex"
-        );
-        // console.log(
-        //     (reserveData.liquidityIndex * 1e11) / initialIndex,
-        //     "<<< reserveData.liquidityIndex * 1e11 / initialIndex"
-        // );
-
-        uint256 interest = (reserveData.liquidityIndex * 1e11) / initialIndex;
-        console.log(interest, "<<< interest");
-        console.log(
-            (interest * reserveFactor) / 10000,
-            "<<< (interest * reserveFactor) / 10000"
-        );
-        uint256 calculations = interest - ((interest * reserveFactor) / 10000);
-        console.log(calculations, "<<< interest - ((interest * reserveFactor) / 10000)");
-
-        console.log(
-            principal * ((reserveData.liquidityIndex * 1e11) / initialIndex),
-            "<<< principal * (reserveData.liquidityIndex * 1e11 / initialIndex)"
-        );
-        console.log(
-            (principal * ((reserveData.liquidityIndex * 1e11) / initialIndex)) -
-                principal,
-            "<<< (principal * ((reserveData.liquidityIndex * 1e11) / initialIndex)) - principal"
-        );
-        // console.log(
-        //     ((principal *
-        //         ((reserveData.liquidityIndex * 1e11) / initialIndex)) -
-        //         principal) / 1e11,
-        //     "<<< CALCULATIONS"
-        // );
 
         vm.stopPrank();
     }
 
     // function testInitialize() public {
     //     vm.startPrank(deployer);
-    //     RehypothecationVault newVault = new RehypothecationVault();
+    //     AaveStrategy newVault = new AaveStrategy();
     //     newVault.initialize(
     //         treasury,
     //         address(collateralToken),
@@ -374,14 +309,14 @@ contract RehypothecationVaultTest is Test {
     //     vm.startPrank(user1);
     //     uint256 initialBalance = collateralToken.balanceOf(user1);
     //     uint256 initialVaultBalance = collateralToken.balanceOf(
-    //         address(rehypoVault)
+    //         address(aaveStrategy)
     //     );
 
-    //     collateralToken.approve(address(rehypoVault), amount);
-    //     rehypoVault.deposit(positionId, user1, amount);
+    //     collateralToken.approve(address(aaveStrategy), amount);
+    //     aaveStrategy.deposit(positionId, user1, amount);
 
     //     assertEq(
-    //         rehypoVault.amounts(positionId),
+    //         aaveStrategy.amounts(positionId),
     //         amount,
     //         "Amount not recorded correctly"
     //     );
@@ -391,7 +326,7 @@ contract RehypothecationVaultTest is Test {
     //         "User balance not updated"
     //     );
     //     assertEq(
-    //         collateralToken.balanceOf(address(rehypoVault)),
+    //         collateralToken.balanceOf(address(aaveStrategy)),
     //         initialVaultBalance,
     //         "Vault balance should not hold tokens"
     //     );
@@ -400,8 +335,8 @@ contract RehypothecationVaultTest is Test {
 
     // function testDepositZeroAmount() public {
     //     vm.startPrank(user1);
-    //     vm.expectRevert(RehypothecationVault.ZeroAmount.selector);
-    //     rehypoVault.deposit(1, user1, 0);
+    //     vm.expectRevert(AaveStrategy.ZeroAmount.selector);
+    //     aaveStrategy.deposit(1, user1, 0);
     //     vm.stopPrank();
     // }
 
@@ -410,11 +345,11 @@ contract RehypothecationVaultTest is Test {
     //     uint256 amount = 1000 ether;
 
     //     vm.startPrank(user1);
-    //     collateralToken.approve(address(rehypoVault), amount);
-    //     rehypoVault.deposit(positionId, user1, amount);
+    //     collateralToken.approve(address(aaveStrategy), amount);
+    //     aaveStrategy.deposit(positionId, user1, amount);
 
-    //     vm.expectRevert(RehypothecationVault.AlreadyActive.selector);
-    //     rehypoVault.deposit(positionId, user1, amount);
+    //     vm.expectRevert(AaveStrategy.AlreadyActive.selector);
+    //     aaveStrategy.deposit(positionId, user1, amount);
     //     vm.stopPrank();
     // }
 
@@ -422,9 +357,9 @@ contract RehypothecationVaultTest is Test {
     //     uint256 positionId = 1;
     //     uint256 amount = 1_000_000 ether;
 
-    //     vm.startPrank(user2); // user2 is not the rehypoVault
-    //     vm.expectRevert(RehypothecationVault.Unauthorized.selector);
-    //     rehypoVault.deposit(positionId, user1, amount);
+    //     vm.startPrank(user2); // user2 is not the aaveStrategy
+    //     vm.expectRevert(AaveStrategy.Unauthorized.selector);
+    //     aaveStrategy.deposit(positionId, user1, amount);
     //     vm.stopPrank();
     // }
 
@@ -433,18 +368,18 @@ contract RehypothecationVaultTest is Test {
     //     uint256 amount = 10000 ether;
 
     //     vm.startPrank(user1);
-    //     collateralToken.approve(address(rehypoVault), amount);
-    //     rehypoVault.deposit(positionId, user1, amount);
+    //     collateralToken.approve(address(aaveStrategy), amount);
+    //     aaveStrategy.deposit(positionId, user1, amount);
 
     //     uint256 oldUserBalance = collateralToken.balanceOf(treasury);
     //     uint256 oldTreasuryAmount = collateralToken.balanceOf(treasury);
 
     //     vm.warp(block.timestamp + 100 days); // pass 100 days
 
-    //     rehypoVault.withdraw(positionId, user1);
+    //     aaveStrategy.withdraw(positionId, user1);
 
     //     assertEq(
-    //         rehypoVault.amounts(positionId),
+    //         aaveStrategy.amounts(positionId),
     //         0,
     //         "Position amount not cleared"
     //     );
@@ -467,17 +402,17 @@ contract RehypothecationVaultTest is Test {
 
     //     // Deposit
     //     vm.startPrank(user1);
-    //     collateralToken.approve(address(rehypoVault), amount);
-    //     rehypoVault.deposit(positionId, user1, amount);
+    //     collateralToken.approve(address(aaveStrategy), amount);
+    //     aaveStrategy.deposit(positionId, user1, amount);
 
     //     // Withdraw
     //     uint256 expectedUserBalance = collateralToken.balanceOf(user1) + amount;
     //     uint256 expectedTreasuryBalance = collateralToken.balanceOf(treasury);
 
-    //     rehypoVault.withdraw(positionId, user1);
+    //     aaveStrategy.withdraw(positionId, user1);
 
     //     assertEq(
-    //         rehypoVault.amounts(positionId),
+    //         aaveStrategy.amounts(positionId),
     //         0,
     //         "Position amount not cleared"
     //     );
@@ -500,21 +435,21 @@ contract RehypothecationVaultTest is Test {
 
     //     // Deposit
     //     vm.startPrank(user1);
-    //     collateralToken.approve(address(rehypoVault), amount);
-    //     rehypoVault.deposit(positionId, user1, amount);
+    //     collateralToken.approve(address(aaveStrategy), amount);
+    //     aaveStrategy.deposit(positionId, user1, amount);
     //     vm.stopPrank();
 
     //     // Try to withdraw as user2
     //     vm.startPrank(user2);
-    //     vm.expectRevert(RehypothecationVault.Unauthorized.selector);
-    //     rehypoVault.withdraw(positionId, user1);
+    //     vm.expectRevert(AaveStrategy.Unauthorized.selector);
+    //     aaveStrategy.withdraw(positionId, user1);
     //     vm.stopPrank();
     // }
 
     // function testSetVaultSuccess() public {
     //     vm.startPrank(deployer);
-    //     rehypoVault.setVault(user2);
-    //     assertEq(rehypoVault.vault(), user2, "Vault address not updated");
+    //     aaveStrategy.setVault(user2);
+    //     assertEq(aaveStrategy.vault(), user2, "Vault address not updated");
     //     vm.stopPrank();
     // }
 
@@ -526,7 +461,7 @@ contract RehypothecationVaultTest is Test {
     //             user2
     //         )
     //     );
-    //     rehypoVault.setVault(user2);
+    //     aaveStrategy.setVault(user2);
     //     vm.stopPrank();
     // }
 
@@ -534,9 +469,9 @@ contract RehypothecationVaultTest is Test {
     //     address newPool = vm.addr(6);
 
     //     vm.startPrank(deployer);
-    //     rehypoVault.updatePoolProxy(newPool);
+    //     aaveStrategy.updatePoolProxy(newPool);
     //     assertEq(
-    //         address(rehypoVault.pool()),
+    //         address(aaveStrategy.pool()),
     //         newPool,
     //         "Pool address not updated"
     //     );
@@ -545,8 +480,8 @@ contract RehypothecationVaultTest is Test {
 
     // function testUpdatePoolProxyZeroAddress() public {
     //     vm.startPrank(deployer);
-    //     vm.expectRevert(RehypothecationVault.InvalidAddress.selector);
-    //     rehypoVault.updatePoolProxy(address(0));
+    //     vm.expectRevert(AaveStrategy.InvalidAddress.selector);
+    //     aaveStrategy.updatePoolProxy(address(0));
     //     vm.stopPrank();
     // }
 
@@ -558,7 +493,7 @@ contract RehypothecationVaultTest is Test {
     //             user2
     //         )
     //     );
-    //     rehypoVault.updatePoolProxy(vm.addr(6));
+    //     aaveStrategy.updatePoolProxy(vm.addr(6));
     //     vm.stopPrank();
     // }
 
@@ -566,9 +501,9 @@ contract RehypothecationVaultTest is Test {
     //     address newController = vm.addr(7);
 
     //     vm.startPrank(deployer);
-    //     rehypoVault.updateRewardsController(newController);
+    //     aaveStrategy.updateRewardsController(newController);
     //     assertEq(
-    //         address(rehypoVault.rewardsController()),
+    //         address(aaveStrategy.rewardsController()),
     //         newController,
     //         "Rewards controller not updated"
     //     );
@@ -577,8 +512,8 @@ contract RehypothecationVaultTest is Test {
 
     // function testUpdateRewardsControllerZeroAddress() public {
     //     vm.startPrank(deployer);
-    //     vm.expectRevert(RehypothecationVault.InvalidAddress.selector);
-    //     rehypoVault.updateRewardsController(address(0));
+    //     vm.expectRevert(AaveStrategy.InvalidAddress.selector);
+    //     aaveStrategy.updateRewardsController(address(0));
     //     vm.stopPrank();
     // }
 
@@ -590,7 +525,7 @@ contract RehypothecationVaultTest is Test {
     //             user2
     //         )
     //     );
-    //     rehypoVault.updateRewardsController(vm.addr(7));
+    //     aaveStrategy.updateRewardsController(vm.addr(7));
     //     vm.stopPrank();
     // }
 
@@ -599,8 +534,8 @@ contract RehypothecationVaultTest is Test {
     //     uint256 amount = 10000 ether;
 
     //     vm.startPrank(user1);
-    //     collateralToken.approve(address(rehypoVault), amount);
-    //     rehypoVault.deposit(positionId, user1, amount);
+    //     collateralToken.approve(address(aaveStrategy), amount);
+    //     aaveStrategy.deposit(positionId, user1, amount);
 
     //     uint256 oldUserBalance = collateralToken.balanceOf(treasury);
     //     uint256 oldTreasuryAmount = collateralToken.balanceOf(treasury);
@@ -608,19 +543,19 @@ contract RehypothecationVaultTest is Test {
     //     vm.warp(block.timestamp + 100 days); // pass 100 days
 
     //     assertGt(
-    //         rehypoVault.getUserRewards(address(rehypoVault)),
+    //         aaveStrategy.getUserRewards(address(aaveStrategy)),
     //         0,
     //         "User Rewards should be greater than 0"
     //     );
 
-    //     rehypoVault.withdraw(positionId, user1);
+    //     aaveStrategy.withdraw(positionId, user1);
     //     assertGt(
-    //         rehypoVault.getAccumulatedRewards(address(rehypoVault)),
+    //         aaveStrategy.getAccruedRewards(address(aaveStrategy)),
     //         0,
     //         "Accumulated Rewards should be greater than 0"
     //     );
 
-    //     rehypoVault.claimReward(user1);
+    //     aaveStrategy.claimReward(user1);
 
     //     assertGt(
     //         rewardToken.balanceOf(user1),
@@ -637,15 +572,15 @@ contract RehypothecationVaultTest is Test {
 
     // function testClaimRewardZeroRewards() public {
     //     vm.startPrank(user1);
-    //     vm.expectRevert(RehypothecationVault.ZeroReward.selector);
-    //     rehypoVault.claimReward(user1);
+    //     vm.expectRevert(AaveStrategy.ZeroReward.selector);
+    //     aaveStrategy.claimReward(user1);
     //     vm.stopPrank();
     // }
 
     // function testClaimRewardUnauthorized() public {
     //     vm.startPrank(user2); // user2 is not the vault
-    //     vm.expectRevert(RehypothecationVault.Unauthorized.selector);
-    //     rehypoVault.claimReward(user1);
+    //     vm.expectRevert(AaveStrategy.Unauthorized.selector);
+    //     aaveStrategy.claimReward(user1);
     //     vm.stopPrank();
     // }
 
@@ -660,17 +595,17 @@ contract RehypothecationVaultTest is Test {
     //     uint256 rewardAmount = 150_000 ether;
 
     //     vm.prank(user1);
-    //     collateralToken.approve(address(rehypoVault), 1_000_000 ether);
+    //     collateralToken.approve(address(aaveStrategy), 1_000_000 ether);
     //     vm.prank(user2);
-    //     collateralToken.approve(address(rehypoVault), 1_000_000 ether);
+    //     collateralToken.approve(address(aaveStrategy), 1_000_000 ether);
 
     //     // User1 deposits
     //     vm.prank(deployer);
-    //     rehypoVault.setVault(user1); // Ensure user1 is vault
+    //     aaveStrategy.setVault(user1); // Ensure user1 is vault
     //     vm.startPrank(user1);
-    //     rehypoVault.deposit(positionId1, user1, depositAmount1);
+    //     aaveStrategy.deposit(positionId1, user1, depositAmount1);
     //     assertEq(
-    //         rehypoVault.amounts(positionId1),
+    //         aaveStrategy.amounts(positionId1),
     //         depositAmount1,
     //         "User1 position amount incorrect"
     //     );
@@ -683,11 +618,11 @@ contract RehypothecationVaultTest is Test {
 
     //     // User2 deposits
     //     vm.prank(deployer);
-    //     rehypoVault.setVault(user2); // Set user2 as vault
+    //     aaveStrategy.setVault(user2); // Set user2 as vault
     //     vm.startPrank(user2);
-    //     rehypoVault.deposit(positionId2, user2, depositAmount2);
+    //     aaveStrategy.deposit(positionId2, user2, depositAmount2);
     //     assertEq(
-    //         rehypoVault.amounts(positionId2),
+    //         aaveStrategy.amounts(positionId2),
     //         depositAmount2,
     //         "User2 position amount incorrect"
     //     );
@@ -715,7 +650,7 @@ contract RehypothecationVaultTest is Test {
 
     //     // User1 withdraws
     //     vm.prank(deployer);
-    //     rehypoVault.setVault(user1);
+    //     aaveStrategy.setVault(user1);
     //     vm.startPrank(user1);
     //     uint256 borrowerShare1 = (interest1 * 7500) / 10000;
     //     uint256 protocolShare1 = (interest1 * 2500) / 10000;
@@ -725,10 +660,10 @@ contract RehypothecationVaultTest is Test {
     //     uint256 expectedTreasuryBalance = collateralToken.balanceOf(treasury) +
     //         protocolShare1;
 
-    //     rehypoVault.withdraw(positionId1, user1);
+    //     aaveStrategy.withdraw(positionId1, user1);
 
     //     assertEq(
-    //         rehypoVault.amounts(positionId1),
+    //         aaveStrategy.amounts(positionId1),
     //         0,
     //         "User1 position not cleared"
     //     );
@@ -751,7 +686,7 @@ contract RehypothecationVaultTest is Test {
 
     //     // User2 withdraws
     //     vm.prank(deployer);
-    //     rehypoVault.setVault(user2);
+    //     aaveStrategy.setVault(user2);
     //     vm.startPrank(user2);
     //     uint256 borrowerShare2 = (interest2 * 7500) / 10000;
     //     uint256 protocolShare2 = (interest2 * 2500) / 10000;
@@ -760,10 +695,10 @@ contract RehypothecationVaultTest is Test {
     //         borrowerShare2;
     //     expectedTreasuryBalance += protocolShare2;
 
-    //     rehypoVault.withdraw(positionId2, user2);
+    //     aaveStrategy.withdraw(positionId2, user2);
 
     //     assertEq(
-    //         rehypoVault.amounts(positionId2),
+    //         aaveStrategy.amounts(positionId2),
     //         0,
     //         "User2 position not cleared"
     //     );
@@ -791,7 +726,7 @@ contract RehypothecationVaultTest is Test {
 
     //     // User1 claims rewards
     //     vm.prank(deployer);
-    //     rehypoVault.setVault(user1);
+    //     aaveStrategy.setVault(user1);
     //     vm.startPrank(user1);
     //     uint256 borrowerRewardShare1 = (rewardAmount * 7500) / 10000;
     //     uint256 protocolRewardShare1 = (rewardAmount * 2500) / 10000;
@@ -801,7 +736,7 @@ contract RehypothecationVaultTest is Test {
     //         treasury
     //     ) + protocolRewardShare1;
 
-    //     rehypoVault.claimReward(user1);
+    //     aaveStrategy.claimReward(user1);
 
     //     assertEq(
     //         rewardToken.balanceOf(user1),
@@ -817,7 +752,7 @@ contract RehypothecationVaultTest is Test {
 
     //     // User2 claims rewards
     //     vm.prank(deployer);
-    //     rehypoVault.setVault(user2);
+    //     aaveStrategy.setVault(user2);
     //     vm.startPrank(user2);
     //     // mockRewardsController.setRewardAmount(rewardAmount); // Reset rewards for user2
     //     uint256 borrowerRewardShare2 = (rewardAmount * 7500) / 10000;
@@ -827,11 +762,11 @@ contract RehypothecationVaultTest is Test {
     //     expectedTreasuryRewardBalance += protocolRewardShare2;
 
     //     vm.expectEmit(false, false, false, true);
-    //     emit RehypothecationVault.RewardClaimed(
+    //     emit AaveStrategy.RewardClaimed(
     //         borrowerRewardShare2,
     //         protocolRewardShare2
     //     );
-    //     rehypoVault.claimReward(user2);
+    //     aaveStrategy.claimReward(user2);
 
     //     assertEq(
     //         rewardToken.balanceOf(user2),

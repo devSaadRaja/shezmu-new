@@ -7,10 +7,10 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 
-import {IPool} from "./interfaces/aave-v3/IPool.sol";
-import {IRewardsController} from "./interfaces/aave-v3/IRewardsController.sol";
+import "../interfaces/aave-v3/IPool.sol";
+import "../interfaces/aave-v3/IRewardsController.sol";
 
-contract RehypothecationVault is
+contract AaveStrategy is
     Initializable,
     OwnableUpgradeable,
     ReentrancyGuardUpgradeable
@@ -21,14 +21,14 @@ contract RehypothecationVault is
 
     struct Position {
         address owner;
-        uint256 principal; // uint256 collateralAmount;
-        // uint256 aTokenAmount;
-        uint256 initialLiquidityIndex;
-        uint256 supplyTime;
+        uint256 collateralAmount;
+        uint256 lastUpdateTimestamp;
     }
 
-    uint256 public constant BORROWER_YIELD_SHARE = 7500; // 75% yield to borrower (bips)
-    uint256 public constant PROTOCOL_YIELD_SHARE = 2500; // 25% yield to protocol (bips)
+    uint256 public constant RAY = 1e27;
+    uint256 public constant SECONDS_IN_A_YEAR = 365 days;
+    uint256 public constant BORROWER_SHARE = 7500; // 75% yield to borrower (bips)
+    uint256 public constant PROTOCOL_SHARE = 2500; // 25% yield to protocol (bips)
     uint256 public constant DENOMINATOR = 10000; // For percentage calculations (bips)
 
     address public vault;
@@ -39,7 +39,6 @@ contract RehypothecationVault is
     IPool public pool;
     IRewardsController public rewardsController;
 
-    mapping(uint256 => uint256) public amounts; // Tracks collateral amount per position
     mapping(uint256 => Position) positions;
 
     // ============================================ //
@@ -109,40 +108,49 @@ contract RehypothecationVault is
     // ================== VIEW FUNCTIONS ================== //
     // ==================================================== //
 
-    // /// @notice Returns the position details for a given position ID
-    // /// @param positionId The ID of the position to query
-    // /// @return owner The address of the position owner
-    // /// @return collateralAmount The amount of collateral in the position
-    // /// @return aTokenAmount The amount of aTokens for this position
-    // function getPosition(
-    //     uint256 positionId
-    // ) external view returns (address, uint256, uint256) {
-    //     Position memory position = positions[positionId];
-    //     return (
-    //         position.owner,
-    //         position.collateralAmount,
-    //         position.aTokenAmount
-    //     );
-    // }
-
-    /// @notice Retrieves the accumulated rewards for a specific user
-    /// @param user Address of the user to check rewards for
-    /// @return uint256 Amount of accumulated rewards
-    function getAccumulatedRewards(address user) public view returns (uint256) {
+    /// @notice Returns the position details for a given position ID
+    /// @param positionId The ID of the position to query
+    /// @return owner The address of the position owner
+    /// @return collateralAmount The amount of collateral in the position
+    /// @return lastUpdateTimestamp The last timestamp of an update to the position
+    function getPosition(
+        uint256 positionId
+    ) external view returns (address, uint256, uint256) {
+        Position memory position = positions[positionId];
         return (
-            rewardsController.getUserAccruedRewards(user, address(rewardToken))
+            position.owner,
+            position.collateralAmount,
+            position.lastUpdateTimestamp
         );
     }
 
+    // /// @notice Retrieves the accrued rewards for a specific user
+    // /// @param user Address of the user to check rewards for
+    // /// @return uint256 Amount of accrued rewards
+    // function getAccruedRewards(address user) public view returns (uint256) {
+    //     return (
+    //         rewardsController.getUserAccruedRewards(user, address(rewardToken))
+    //     );
+    // }
+
+    // /// @notice Gets the current rewards balance for a specific user
+    // /// @param user Address of the user to check rewards for
+    // /// @return uint256 Amount of current rewards
+    // function getUserRewards(address user) public view returns (uint256) {
+    //     address[] memory assets = new address[](1);
+    //     assets[0] = address(aToken);
+    //     return (
+    //         rewardsController.getUserRewards(assets, user, address(rewardToken))
+    //     );
+    // }
+
     /// @notice Gets the current rewards balance for a specific user
-    /// @param user Address of the user to check rewards for
-    /// @return uint256 Amount of current rewards
-    function getUserRewards(address user) public view returns (uint256) {
-        address[] memory assets = new address[](1);
-        assets[0] = address(aToken);
-        return (
-            rewardsController.getUserRewards(assets, user, address(rewardToken))
-        );
+    /// @param positionId The ID of the position to query
+    /// @return uint256 current interest amount of position
+    function getAccumulatedInterest(
+        uint256 positionId
+    ) external view returns (uint256) {
+        return _getAccumulatedInterest(positionId);
     }
 
     // ===================================================== //
@@ -158,91 +166,72 @@ contract RehypothecationVault is
         uint256 amount
     ) external nonReentrant onlyVault {
         if (amount == 0) revert ZeroAmount();
-        if (amounts[positionId] > 0) revert AlreadyActive();
-        // if (positions[positionId].collateralAmount > 0) revert AlreadyActive();
+        if (positions[positionId].collateralAmount > 0) revert AlreadyActive();
 
         collateralToken.transferFrom(user, address(this), amount);
 
-        amounts[positionId] = amount;
-        // positions[positionId].owner = user;
-        // positions[positionId].collateralAmount = amount;
-
-        // uint256 balanceBefore = aToken.balanceOf(address(this));
+        positions[positionId].owner = user;
+        positions[positionId].collateralAmount = amount;
+        positions[positionId].lastUpdateTimestamp = block.timestamp;
 
         collateralToken.approve(address(pool), amount);
         pool.supply(address(collateralToken), amount, address(this), 0);
 
-        // positions[positionId].aTokenAmount =
-        //     aToken.balanceOf(address(this)) -
-        //     balanceBefore;
-
         emit Deposit(positionId, amount);
     }
 
-    /// @notice Withdraws collateral from a position
+    /// @notice Withdraws collateral from a position and divides interest
     /// @param positionId Unique identifier for the position
-    function withdraw(
-        uint256 positionId,
-        address user
-    ) external nonReentrant onlyVault {
-        uint256 balanceBefore = aToken.balanceOf(address(this));
+    function withdraw(uint256 positionId) external nonReentrant onlyVault {
+        Position storage pos = positions[positionId];
 
+        uint256 interest = _getAccumulatedInterest(positionId);
         pool.withdraw(
             address(collateralToken),
-            amounts[positionId],
+            pos.collateralAmount + interest,
             address(this)
         );
 
-        uint256 newBalance = aToken.balanceOf(address(this));
-        uint256 interestATokens = balanceBefore - newBalance;
-        uint256 interest = pool.withdraw(
-            address(collateralToken),
-            interestATokens,
-            address(this)
-        );
-
-        // uint256 interest = withdrawnAmount - amounts[positionId];
-        // uint256 interest = withdrawnAmount -
-        //     positions[positionId].collateralAmount;
-
-        uint256 borrowerAmount = (interest * BORROWER_YIELD_SHARE) /
-            DENOMINATOR;
-        uint256 protocolAmount = (interest * PROTOCOL_YIELD_SHARE) /
-            DENOMINATOR;
+        uint256 borrowerAmount = (interest * BORROWER_SHARE) / DENOMINATOR;
+        uint256 protocolAmount = (interest * PROTOCOL_SHARE) / DENOMINATOR;
 
         collateralToken.transfer(treasury, protocolAmount);
-        collateralToken.transfer(user, borrowerAmount + amounts[positionId]);
+        collateralToken.transfer(
+            pos.owner,
+            borrowerAmount + pos.collateralAmount
+        );
 
-        amounts[positionId] = 0;
+        pos.collateralAmount = 0;
 
         emit Withdraw(positionId);
     }
 
-    /// @notice Claims accumulated reward for a user and splits it between borrower and protocol
-    /// @dev Splits yield according to BORROWER_YIELD_SHARE and PROTOCOL_YIELD_SHARE
-    function claimReward(address user) external nonReentrant onlyVault {
-        uint256 totalReward = this.getUserRewards(address(this));
-        if (totalReward == 0) revert ZeroReward();
+    // /// @notice Claims accumulated reward for a user and splits it between borrower and protocol
+    // /// @param positionId Unique identifier for the position
+    // /// @dev Splits yield according to BORROWER_SHARE and PROTOCOL_SHARE
+    // function claimReward(uint256 positionId) external nonReentrant onlyVault {
+    //     uint256 totalReward = this.getUserRewards(address(this));
+    //     if (totalReward == 0) revert ZeroReward();
 
-        address[] memory assets = new address[](1);
-        assets[0] = address(aToken);
-        rewardsController.claimRewards(
-            assets,
-            type(uint256).max,
-            address(this),
-            address(rewardToken)
-        );
+    //     Position memory pos = positions[positionId];
 
-        uint256 borrowerAmount = (totalReward * BORROWER_YIELD_SHARE) /
-            DENOMINATOR;
-        uint256 protocolAmount = (totalReward * PROTOCOL_YIELD_SHARE) /
-            DENOMINATOR;
+    //     address[] memory assets = new address[](1);
+    //     assets[0] = address(aToken);
+    //     rewardsController.claimRewards(
+    //         assets,
+    //         borrowerAmount + pos.collateralAmount, // type(uint256).max,
+    //         address(this),
+    //         address(rewardToken)
+    //     );
 
-        rewardToken.transfer(user, borrowerAmount);
-        rewardToken.transfer(treasury, protocolAmount);
+    //     uint256 borrowerAmount = (totalReward * BORROWER_SHARE) / DENOMINATOR;
+    //     uint256 protocolAmount = (totalReward * PROTOCOL_SHARE) / DENOMINATOR;
 
-        emit RewardClaimed(borrowerAmount, protocolAmount);
-    }
+    //     rewardToken.transfer(pos.owner, borrowerAmount);
+    //     rewardToken.transfer(treasury, protocolAmount);
+
+    //     emit RewardClaimed(borrowerAmount, protocolAmount);
+    // }
 
     // ===================================================== //
     // ================== OWNER FUNCTIONS ================== //
@@ -270,5 +259,28 @@ contract RehypothecationVault is
     ) external onlyOwner onlyValidAddress(newController) {
         rewardsController = IRewardsController(newController);
         emit RewardsControllerUpdated(newController);
+    }
+
+    // ======================================================== //
+    // ================== INTERNAL FUNCTIONS ================== //
+    // ======================================================== //
+
+    /// @notice Gets the current rewards balance for a specific user
+    /// @param positionId The ID of the position to query
+    /// @return uint256 current interest amount of position
+    function _getAccumulatedInterest(
+        uint256 positionId
+    ) internal view returns (uint256) {
+        DataTypes.ReserveDataLegacy memory reserveData = pool.getReserveData(
+            address(collateralToken)
+        );
+        uint256 timeElapsed = block.timestamp -
+            positions[positionId].lastUpdateTimestamp;
+        uint256 currentLiquidityRate = reserveData.currentLiquidityRate;
+        uint256 interest = (positions[positionId].collateralAmount *
+            currentLiquidityRate *
+            timeElapsed) / (SECONDS_IN_A_YEAR * RAY);
+
+        return interest;
     }
 }
