@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
+import "forge-std/Test.sol";
+
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
@@ -36,6 +38,8 @@ contract AaveStrategy is
     IERC20 public collateralToken;
     IERC20 public aToken;
     IERC20 public rewardToken;
+    uint256 public totalDeposited; // Total collateral deposited
+
     IPool public pool;
     IRewardsController public rewardsController;
 
@@ -112,7 +116,6 @@ contract AaveStrategy is
     /// @param positionId The ID of the position to query
     /// @return owner The address of the position owner
     /// @return collateralAmount The amount of collateral in the position
-    /// @return lastUpdateTimestamp The last timestamp of an update to the position
     function getPosition(
         uint256 positionId
     ) external view returns (address, uint256, uint256) {
@@ -166,13 +169,15 @@ contract AaveStrategy is
         uint256 amount
     ) external nonReentrant onlyVault {
         if (amount == 0) revert ZeroAmount();
-        if (positions[positionId].collateralAmount > 0) revert AlreadyActive();
+        // if (positions[positionId].collateralAmount > 0) revert AlreadyActive();
 
-        collateralToken.transferFrom(user, address(this), amount);
+        collateralToken.transferFrom(msg.sender, address(this), amount);
 
         positions[positionId].owner = user;
         positions[positionId].collateralAmount = amount;
         positions[positionId].lastUpdateTimestamp = block.timestamp;
+
+        totalDeposited += amount;
 
         collateralToken.approve(address(pool), amount);
         pool.supply(address(collateralToken), amount, address(this), 0);
@@ -201,6 +206,7 @@ contract AaveStrategy is
             borrowerAmount + pos.collateralAmount
         );
 
+        totalDeposited -= pos.collateralAmount;
         pos.collateralAmount = 0;
 
         emit Withdraw(positionId);
@@ -261,6 +267,11 @@ contract AaveStrategy is
         emit RewardsControllerUpdated(newController);
     }
 
+    /// @notice Sets no use for reserves as collateral
+    function setUserUseReserveAsCollateral() external onlyOwner {
+        pool.setUserUseReserveAsCollateral(address(collateralToken), false);
+    }
+
     // ======================================================== //
     // ================== INTERNAL FUNCTIONS ================== //
     // ======================================================== //
@@ -282,5 +293,17 @@ contract AaveStrategy is
             timeElapsed) / (SECONDS_IN_A_YEAR * RAY);
 
         return interest;
+
+        // Position memory position = positions[positionId];
+        // if (position.collateralAmount == 0 || totalDeposited == 0) return 0;
+
+        // uint256 totalBalance = aToken.balanceOf(address(this));
+        // uint256 totalInterest = totalBalance > totalDeposited
+        //     ? totalBalance - totalDeposited
+        //     : 0;
+        // uint256 positionShare = (position.collateralAmount * 1e18) /
+        //     totalDeposited;
+
+        // return (totalInterest * positionShare) / 1e18;
     }
 }

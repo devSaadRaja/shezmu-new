@@ -66,6 +66,11 @@ contract AaveStrategyTest is Test {
             address(INCENTIVES_V3)
         );
 
+        aaveStrategy.setVault(deployer);
+        collateralToken.approve(address(aaveStrategy), 1);
+        aaveStrategy.deposit(0, deployer, 1);
+        aaveStrategy.setUserUseReserveAsCollateral();
+
         aaveStrategy.setVault(user1);
 
         collateralToken.transfer(user1, 2_000_000 ether);
@@ -133,25 +138,33 @@ contract AaveStrategyTest is Test {
             IERC20(collateralToken).balanceOf(user1),
             "<<< collateralToken.balanceOf(user1)"
         );
-        console.log(aToken.balanceOf(user2), "<<< aToken.balanceOf(user2)");
         console.log(
-            IERC20(collateralToken).balanceOf(user2),
-            "<<< collateralToken.balanceOf(user2)"
+            aToken.balanceOf(address(aaveStrategy)),
+            "<<< aToken.balanceOf(address(aaveStrategy))"
         );
+        console.log(
+            IERC20(collateralToken).balanceOf(address(aaveStrategy)),
+            "<<< collateralToken.balanceOf(address(aaveStrategy))"
+        );
+        // console.log(aToken.balanceOf(user2), "<<< aToken.balanceOf(user2)");
+        // console.log(
+        //     IERC20(collateralToken).balanceOf(user2),
+        //     "<<< collateralToken.balanceOf(user2)"
+        // );
 
         // !
-        // collateralToken.approve(address(aaveStrategy), principal);
-        // aaveStrategy.deposit(1, user1, principal);
+        collateralToken.approve(address(aaveStrategy), principal);
+        aaveStrategy.deposit(1, user1, principal);
 
-        collateralToken.approve(address(POOL_V3), principal);
-        POOL_V3.supply(address(collateralToken), principal, user1, 0);
+        // collateralToken.approve(address(POOL_V3), principal);
+        // POOL_V3.supply(address(collateralToken), principal, user1, 0);
 
-        POOL_V3.setUserUseReserveAsCollateral(address(collateralToken), false);
+        // POOL_V3.setUserUseReserveAsCollateral(address(collateralToken), false);
 
-        collateralToken.approve(address(POOL_V3), principal);
-        POOL_V3.supply(address(collateralToken), principal, user2, 0);
+        // collateralToken.approve(address(POOL_V3), principal);
+        // POOL_V3.supply(address(collateralToken), principal, user2, 0);
 
-        POOL_V3.setUserUseReserveAsCollateral(address(collateralToken), false);
+        // POOL_V3.setUserUseReserveAsCollateral(address(collateralToken), false);
         // !
 
         console.log();
@@ -162,22 +175,38 @@ contract AaveStrategyTest is Test {
             "<<< collateralToken.balanceOf(user1)"
         );
         console.log(
-            IERC20(rewardToken).balanceOf(user1),
-            "<<< rewardToken.balanceOf(user1)"
-        );
-        console.log(aToken.balanceOf(user2), "<<< aToken.balanceOf(user2)");
-        console.log(
-            IERC20(collateralToken).balanceOf(user2),
-            "<<< collateralToken.balanceOf(user2)"
+            aToken.balanceOf(address(aaveStrategy)),
+            "<<< aToken.balanceOf(address(aaveStrategy))"
         );
         console.log(
-            IERC20(rewardToken).balanceOf(user2),
-            "<<< rewardToken.balanceOf(user2)"
+            IERC20(collateralToken).balanceOf(address(aaveStrategy)),
+            "<<< collateralToken.balanceOf(address(aaveStrategy))"
         );
+        // console.log(
+        //     IERC20(rewardToken).balanceOf(user1),
+        //     "<<< rewardToken.balanceOf(user1)"
+        // );
+        // console.log(aToken.balanceOf(user2), "<<< aToken.balanceOf(user2)");
+        // console.log(
+        //     IERC20(collateralToken).balanceOf(user2),
+        //     "<<< collateralToken.balanceOf(user2)"
+        // );
+        // console.log(
+        //     IERC20(rewardToken).balanceOf(user2),
+        //     "<<< rewardToken.balanceOf(user2)"
+        // );
 
         // !
         vm.warp(block.timestamp + 100 days);
         // !
+
+        // vm.stopPrank();
+        // vm.startPrank(deployer);
+        // collateralToken.approve(address(POOL_V3), principal);
+        // POOL_V3.supply(address(collateralToken), principal, deployer, 0);
+
+        collateralToken.approve(address(aaveStrategy), principal);
+        aaveStrategy.deposit(2, user2, principal);
 
         console.log();
         console.log("AFTER TIME PASSED");
@@ -187,158 +216,177 @@ contract AaveStrategyTest is Test {
             "<<< collateralToken.balanceOf(user1)"
         );
         console.log(
-            IERC20(rewardToken).balanceOf(user1),
-            "<<< rewardToken.balanceOf(user1)"
-        );
-        console.log(aToken.balanceOf(user2), "<<< aToken.balanceOf(user2)");
-        console.log(
-            IERC20(collateralToken).balanceOf(user2),
-            "<<< collateralToken.balanceOf(user2)"
+            aToken.balanceOf(address(aaveStrategy)),
+            "<<< aToken.balanceOf(address(aaveStrategy))"
         );
         console.log(
-            IERC20(rewardToken).balanceOf(user2),
-            "<<< rewardToken.balanceOf(user2)"
+            IERC20(collateralToken).balanceOf(address(aaveStrategy)),
+            "<<< collateralToken.balanceOf(address(aaveStrategy))"
         );
 
         console.log(
-            INCENTIVES_V3.getUserRewards(assets, user1, address(rewardToken)),
-            "<<< USER REWARDS"
+            aaveStrategy.getAccumulatedInterest(0),
+            "<<< aaveStrategy.getAccumulatedInterest(0)"
         );
         console.log(
-            INCENTIVES_V3.getUserAccruedRewards(user1, address(rewardToken)),
-            "<<< ACCRUED REWARDS"
+            aaveStrategy.getAccumulatedInterest(1),
+            "<<< aaveStrategy.getAccumulatedInterest(1)"
         );
         console.log(
-            INCENTIVES_V3.getUserRewards(assets, user2, address(rewardToken)),
-            "<<< USER REWARDS 2"
+            aaveStrategy.getAccumulatedInterest(2),
+            "<<< aaveStrategy.getAccumulatedInterest(2)"
         );
-        console.log(
-            INCENTIVES_V3.getUserAccruedRewards(user2, address(rewardToken)),
-            "<<< ACCRUED REWARDS 2"
-        );
+        // console.log(
+        //     IERC20(rewardToken).balanceOf(user1),
+        //     "<<< rewardToken.balanceOf(user1)"
+        // );
+        // console.log(aToken.balanceOf(user2), "<<< aToken.balanceOf(user2)");
+        // console.log(
+        //     IERC20(collateralToken).balanceOf(user2),
+        //     "<<< collateralToken.balanceOf(user2)"
+        // );
+        // console.log(
+        //     IERC20(rewardToken).balanceOf(user2),
+        //     "<<< rewardToken.balanceOf(user2)"
+        // );
 
-        DataTypes.ReserveDataLegacy memory reserveData = POOL_V3.getReserveData(
-            address(collateralToken)
-        );
-        console.log();
-        console.log(principal, "<<< principal");
-        uint256 timeElapsed = block.timestamp - reserveData.lastUpdateTimestamp;
-        console.log(timeElapsed, "<<< timeElapsed");
-        uint256 currentLiquidityRate = reserveData.currentLiquidityRate;
-        console.log(currentLiquidityRate, "<<< currentLiquidityRate");
-        uint256 interest = (principal * currentLiquidityRate * timeElapsed) /
-            (365 * 24 * 3600 * 1e27);
-        console.log(interest, "<<< interest");
+        // console.log(
+        //     INCENTIVES_V3.getUserRewards(assets, user1, address(rewardToken)),
+        //     "<<< USER REWARDS"
+        // );
+        // console.log(
+        //     INCENTIVES_V3.getUserAccruedRewards(user1, address(rewardToken)),
+        //     "<<< ACCRUED REWARDS"
+        // );
+        // console.log(
+        //     INCENTIVES_V3.getUserRewards(assets, user2, address(rewardToken)),
+        //     "<<< USER REWARDS 2"
+        // );
+        // console.log(
+        //     INCENTIVES_V3.getUserAccruedRewards(user2, address(rewardToken)),
+        //     "<<< ACCRUED REWARDS 2"
+        // );
+
+        // DataTypes.ReserveDataLegacy memory reserveData = POOL_V3.getReserveData(
+        //     address(collateralToken)
+        // );
+        // console.log();
+        // console.log(principal, "<<< principal");
+        // uint256 timeElapsed = block.timestamp - reserveData.lastUpdateTimestamp;
+        // console.log(timeElapsed, "<<< timeElapsed");
+        // uint256 currentLiquidityRate = reserveData.currentLiquidityRate;
+        // console.log(currentLiquidityRate, "<<< currentLiquidityRate");
+        // uint256 interest = (principal * currentLiquidityRate * timeElapsed) /
+        //     (365 * 24 * 3600 * 1e27);
+        // console.log(interest, "<<< interest");
 
         // !
         // aaveStrategy.withdraw(1);
-        POOL_V3.withdraw(address(collateralToken), principal + interest, user1); // type(uint256).max
+        // POOL_V3.withdraw(address(collateralToken), principal + interest, user1); // type(uint256).max
 
-        INCENTIVES_V3.claimRewards(
-            assets,
-            type(uint256).max,
-            user1,
-            address(rewardToken)
-        );
+        // INCENTIVES_V3.claimRewards(
+        //     assets,
+        //     type(uint256).max,
+        //     user1,
+        //     address(rewardToken)
+        // );
         // !
 
-        console.log();
-        console.log("AFTER CLAIM");
-        console.log(aToken.balanceOf(user1), "<<< aToken.balanceOf(user1)");
-        console.log(
-            IERC20(collateralToken).balanceOf(user1),
-            "<<< collateralToken.balanceOf(user1)"
-        );
-        console.log(
-            IERC20(rewardToken).balanceOf(user1),
-            "<<< rewardToken.balanceOf(user1)"
-        );
-        console.log(aToken.balanceOf(user2), "<<< aToken.balanceOf(user2)");
-        console.log(
-            IERC20(collateralToken).balanceOf(user2),
-            "<<< collateralToken.balanceOf(user2)"
-        );
-        console.log(
-            IERC20(rewardToken).balanceOf(user2),
-            "<<< rewardToken.balanceOf(user2)"
-        );
+        // console.log();
+        // console.log("AFTER CLAIM");
+        // console.log(aToken.balanceOf(user1), "<<< aToken.balanceOf(user1)");
+        // console.log(
+        //     IERC20(collateralToken).balanceOf(user1),
+        //     "<<< collateralToken.balanceOf(user1)"
+        // );
+        // console.log(
+        //     IERC20(rewardToken).balanceOf(user1),
+        //     "<<< rewardToken.balanceOf(user1)"
+        // );
+        // console.log(aToken.balanceOf(user2), "<<< aToken.balanceOf(user2)");
+        // console.log(
+        //     IERC20(collateralToken).balanceOf(user2),
+        //     "<<< collateralToken.balanceOf(user2)"
+        // );
+        // console.log(
+        //     IERC20(rewardToken).balanceOf(user2),
+        //     "<<< rewardToken.balanceOf(user2)"
+        // );
 
         vm.stopPrank();
     }
 
-    // function testInitialize() public {
-    //     vm.startPrank(deployer);
-    //     AaveStrategy newVault = new AaveStrategy();
-    //     newVault.initialize(
-    //         treasury,
-    //         address(collateralToken),
-    //         address(aToken),
-    //         address(rewardToken),
-    //         address(POOL_V3),
-    //         address(INCENTIVES_V3)
-    //     );
+    function testInitialize() public {
+        vm.startPrank(deployer);
+        AaveStrategy newVault = new AaveStrategy();
+        newVault.initialize(
+            treasury,
+            address(collateralToken),
+            address(aToken),
+            address(rewardToken),
+            address(POOL_V3),
+            address(INCENTIVES_V3)
+        );
 
-    //     assertEq(newVault.owner(), deployer, "Owner not set correctly");
-    //     assertEq(newVault.treasury(), treasury, "Treasury not set correctly");
-    //     assertEq(
-    //         address(newVault.collateralToken()),
-    //         address(collateralToken),
-    //         "Collateral token not set correctly"
-    //     );
-    //     assertEq(
-    //         address(newVault.rewardToken()),
-    //         address(aToken),
-    //         "Reward token not set correctly"
-    //     );
-    //     assertEq(
-    //         address(newVault.pool()),
-    //         address(POOL_V3),
-    //         "Pool not set correctly"
-    //     );
-    //     assertEq(
-    //         address(newVault.rewardsController()),
-    //         address(INCENTIVES_V3),
-    //         "Rewards controller not set correctly"
-    //     );
-    // }
+        assertEq(newVault.owner(), deployer, "Owner not set correctly");
+        assertEq(newVault.treasury(), treasury, "Treasury not set correctly");
+        assertEq(
+            address(newVault.collateralToken()),
+            address(collateralToken),
+            "Collateral token not set correctly"
+        );
+        assertEq(
+            address(newVault.rewardToken()),
+            address(aToken),
+            "Reward token not set correctly"
+        );
+        assertEq(
+            address(newVault.pool()),
+            address(POOL_V3),
+            "Pool not set correctly"
+        );
+        assertEq(
+            address(newVault.rewardsController()),
+            address(INCENTIVES_V3),
+            "Rewards controller not set correctly"
+        );
+    }
 
-    // function testDepositSuccess() public {
-    //     uint256 positionId = 1;
-    //     uint256 amount = 1000 ether;
+    function testDepositSuccess() public {
+        uint256 positionId = 1;
+        uint256 amount = 1000 ether;
 
-    //     vm.startPrank(user1);
-    //     uint256 initialBalance = collateralToken.balanceOf(user1);
-    //     uint256 initialVaultBalance = collateralToken.balanceOf(
-    //         address(aaveStrategy)
-    //     );
+        vm.startPrank(user1);
+        uint256 initialBalance = collateralToken.balanceOf(user1);
+        uint256 initialVaultBalance = collateralToken.balanceOf(
+            address(aaveStrategy)
+        );
 
-    //     collateralToken.approve(address(aaveStrategy), amount);
-    //     aaveStrategy.deposit(positionId, user1, amount);
+        collateralToken.approve(address(aaveStrategy), amount);
+        aaveStrategy.deposit(positionId, user1, amount);
 
-    //     assertEq(
-    //         aaveStrategy.amounts(positionId),
-    //         amount,
-    //         "Amount not recorded correctly"
-    //     );
-    //     assertEq(
-    //         collateralToken.balanceOf(user1),
-    //         initialBalance - amount,
-    //         "User balance not updated"
-    //     );
-    //     assertEq(
-    //         collateralToken.balanceOf(address(aaveStrategy)),
-    //         initialVaultBalance,
-    //         "Vault balance should not hold tokens"
-    //     );
-    //     vm.stopPrank();
-    // }
+        (, uint256 collateralAmount, ) = aaveStrategy.getPosition(positionId);
 
-    // function testDepositZeroAmount() public {
-    //     vm.startPrank(user1);
-    //     vm.expectRevert(AaveStrategy.ZeroAmount.selector);
-    //     aaveStrategy.deposit(1, user1, 0);
-    //     vm.stopPrank();
-    // }
+        assertEq(collateralAmount, amount, "Amount not recorded correctly");
+        assertEq(
+            collateralToken.balanceOf(user1),
+            initialBalance - amount,
+            "User balance not updated"
+        );
+        assertEq(
+            collateralToken.balanceOf(address(aaveStrategy)),
+            initialVaultBalance,
+            "Vault balance should not hold tokens"
+        );
+        vm.stopPrank();
+    }
+
+    function testDepositZeroAmount() public {
+        vm.startPrank(user1);
+        vm.expectRevert(AaveStrategy.ZeroAmount.selector);
+        aaveStrategy.deposit(1, user1, 0);
+        vm.stopPrank();
+    }
 
     // function testDepositActivePosition() public {
     //     uint256 positionId = 1;
@@ -353,149 +401,143 @@ contract AaveStrategyTest is Test {
     //     vm.stopPrank();
     // }
 
-    // function testDepositUnauthorized() public {
-    //     uint256 positionId = 1;
-    //     uint256 amount = 1_000_000 ether;
+    function testDepositUnauthorized() public {
+        uint256 positionId = 1;
+        uint256 amount = 1_000_000 ether;
 
-    //     vm.startPrank(user2); // user2 is not the aaveStrategy
-    //     vm.expectRevert(AaveStrategy.Unauthorized.selector);
-    //     aaveStrategy.deposit(positionId, user1, amount);
-    //     vm.stopPrank();
-    // }
+        vm.startPrank(user2); // user2 is not the aaveStrategy
+        vm.expectRevert(AaveStrategy.Unauthorized.selector);
+        aaveStrategy.deposit(positionId, user1, amount);
+        vm.stopPrank();
+    }
 
-    // function testWithdrawWithInterest() public {
-    //     uint256 positionId = 1;
-    //     uint256 amount = 10000 ether;
+    function testWithdrawWithInterest() public {
+        uint256 positionId = 1;
+        uint256 amount = 10000 ether;
 
-    //     vm.startPrank(user1);
-    //     collateralToken.approve(address(aaveStrategy), amount);
-    //     aaveStrategy.deposit(positionId, user1, amount);
+        vm.startPrank(user1);
+        collateralToken.approve(address(aaveStrategy), amount);
+        aaveStrategy.deposit(positionId, user1, amount);
 
-    //     uint256 oldUserBalance = collateralToken.balanceOf(treasury);
-    //     uint256 oldTreasuryAmount = collateralToken.balanceOf(treasury);
+        uint256 oldUserBalance = collateralToken.balanceOf(treasury);
+        uint256 oldTreasuryAmount = collateralToken.balanceOf(treasury);
 
-    //     vm.warp(block.timestamp + 100 days); // pass 100 days
+        vm.warp(block.timestamp + 100 days); // pass 100 days
 
-    //     aaveStrategy.withdraw(positionId, user1);
+        aaveStrategy.withdraw(positionId);
 
-    //     assertEq(
-    //         aaveStrategy.amounts(positionId),
-    //         0,
-    //         "Position amount not cleared"
-    //     );
-    //     assertGt(
-    //         collateralToken.balanceOf(user1),
-    //         oldUserBalance,
-    //         "User balance not updated"
-    //     );
-    //     assertGt(
-    //         collateralToken.balanceOf(treasury),
-    //         oldTreasuryAmount,
-    //         "Treasury balance not updated"
-    //     );
-    //     vm.stopPrank();
-    // }
+        (, uint256 collateralAmount, ) = aaveStrategy.getPosition(positionId);
+        assertEq(collateralAmount, 0, "Position amount not cleared");
+        assertGt(
+            collateralToken.balanceOf(user1),
+            oldUserBalance,
+            "User balance not updated"
+        );
+        assertGt(
+            collateralToken.balanceOf(treasury),
+            oldTreasuryAmount,
+            "Treasury balance not updated"
+        );
+        vm.stopPrank();
+    }
 
-    // function testWithdrawNoInterest() public {
-    //     uint256 positionId = 1;
-    //     uint256 amount = 10000 ether;
+    function testWithdrawNoInterest() public {
+        uint256 positionId = 1;
+        uint256 amount = 10000 ether;
 
-    //     // Deposit
-    //     vm.startPrank(user1);
-    //     collateralToken.approve(address(aaveStrategy), amount);
-    //     aaveStrategy.deposit(positionId, user1, amount);
+        // Deposit
+        vm.startPrank(user1);
+        collateralToken.approve(address(aaveStrategy), amount);
+        aaveStrategy.deposit(positionId, user1, amount);
 
-    //     // Withdraw
-    //     uint256 expectedUserBalance = collateralToken.balanceOf(user1) + amount;
-    //     uint256 expectedTreasuryBalance = collateralToken.balanceOf(treasury);
+        // Withdraw
+        uint256 expectedUserBalance = collateralToken.balanceOf(user1) + amount;
+        uint256 expectedTreasuryBalance = collateralToken.balanceOf(treasury);
 
-    //     aaveStrategy.withdraw(positionId, user1);
+        aaveStrategy.withdraw(positionId);
 
-    //     assertEq(
-    //         aaveStrategy.amounts(positionId),
-    //         0,
-    //         "Position amount not cleared"
-    //     );
-    //     assertEq(
-    //         collateralToken.balanceOf(user1),
-    //         expectedUserBalance,
-    //         "User balance not updated"
-    //     );
-    //     assertEq(
-    //         collateralToken.balanceOf(treasury),
-    //         expectedTreasuryBalance,
-    //         "Treasury balance not updated"
-    //     );
-    //     vm.stopPrank();
-    // }
+        (, uint256 collateralAmount, ) = aaveStrategy.getPosition(positionId);
+        assertEq(collateralAmount, 0, "Position amount not cleared");
+        assertEq(
+            collateralToken.balanceOf(user1),
+            expectedUserBalance,
+            "User balance not updated"
+        );
+        assertEq(
+            collateralToken.balanceOf(treasury),
+            expectedTreasuryBalance,
+            "Treasury balance not updated"
+        );
+        vm.stopPrank();
+    }
 
-    // function testWithdrawUnauthorized() public {
-    //     uint256 positionId = 1;
-    //     uint256 amount = 10000 ether;
+    function testWithdrawUnauthorized() public {
+        uint256 positionId = 1;
+        uint256 amount = 10000 ether;
 
-    //     // Deposit
-    //     vm.startPrank(user1);
-    //     collateralToken.approve(address(aaveStrategy), amount);
-    //     aaveStrategy.deposit(positionId, user1, amount);
-    //     vm.stopPrank();
+        // Deposit
+        vm.startPrank(user1);
+        collateralToken.approve(address(aaveStrategy), amount);
+        aaveStrategy.deposit(positionId, user1, amount);
+        vm.stopPrank();
 
-    //     // Try to withdraw as user2
-    //     vm.startPrank(user2);
-    //     vm.expectRevert(AaveStrategy.Unauthorized.selector);
-    //     aaveStrategy.withdraw(positionId, user1);
-    //     vm.stopPrank();
-    // }
+        // Try to withdraw as user2
+        vm.startPrank(user2);
+        vm.expectRevert(AaveStrategy.Unauthorized.selector);
+        aaveStrategy.withdraw(positionId);
+        vm.stopPrank();
+    }
 
-    // function testSetVaultSuccess() public {
-    //     vm.startPrank(deployer);
-    //     aaveStrategy.setVault(user2);
-    //     assertEq(aaveStrategy.vault(), user2, "Vault address not updated");
-    //     vm.stopPrank();
-    // }
+    function testSetVaultSuccess() public {
+        vm.startPrank(deployer);
+        aaveStrategy.setVault(user2);
+        assertEq(aaveStrategy.vault(), user2, "Vault address not updated");
+        vm.stopPrank();
+    }
 
-    // function testSetVaultNonOwner() public {
-    //     vm.startPrank(user2);
-    //     vm.expectRevert(
-    //         abi.encodeWithSelector(
-    //             OwnableUpgradeable.OwnableUnauthorizedAccount.selector,
-    //             user2
-    //         )
-    //     );
-    //     aaveStrategy.setVault(user2);
-    //     vm.stopPrank();
-    // }
+    function testSetVaultNonOwner() public {
+        vm.startPrank(user2);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OwnableUpgradeable.OwnableUnauthorizedAccount.selector,
+                user2
+            )
+        );
+        aaveStrategy.setVault(user2);
+        vm.stopPrank();
+    }
 
-    // function testUpdatePoolProxySuccess() public {
-    //     address newPool = vm.addr(6);
+    function testUpdatePoolProxySuccess() public {
+        address newPool = vm.addr(6);
 
-    //     vm.startPrank(deployer);
-    //     aaveStrategy.updatePoolProxy(newPool);
-    //     assertEq(
-    //         address(aaveStrategy.pool()),
-    //         newPool,
-    //         "Pool address not updated"
-    //     );
-    //     vm.stopPrank();
-    // }
+        vm.startPrank(deployer);
+        aaveStrategy.updatePoolProxy(newPool);
+        assertEq(
+            address(aaveStrategy.pool()),
+            newPool,
+            "Pool address not updated"
+        );
+        vm.stopPrank();
+    }
 
-    // function testUpdatePoolProxyZeroAddress() public {
-    //     vm.startPrank(deployer);
-    //     vm.expectRevert(AaveStrategy.InvalidAddress.selector);
-    //     aaveStrategy.updatePoolProxy(address(0));
-    //     vm.stopPrank();
-    // }
+    function testUpdatePoolProxyZeroAddress() public {
+        vm.startPrank(deployer);
+        vm.expectRevert(AaveStrategy.InvalidAddress.selector);
+        aaveStrategy.updatePoolProxy(address(0));
+        vm.stopPrank();
+    }
 
-    // function testUpdatePoolProxyNonOwner() public {
-    //     vm.startPrank(user2);
-    //     vm.expectRevert(
-    //         abi.encodeWithSelector(
-    //             OwnableUpgradeable.OwnableUnauthorizedAccount.selector,
-    //             user2
-    //         )
-    //     );
-    //     aaveStrategy.updatePoolProxy(vm.addr(6));
-    //     vm.stopPrank();
-    // }
+    function testUpdatePoolProxyNonOwner() public {
+        vm.startPrank(user2);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OwnableUpgradeable.OwnableUnauthorizedAccount.selector,
+                user2
+            )
+        );
+        aaveStrategy.updatePoolProxy(vm.addr(6));
+        vm.stopPrank();
+    }
 
     // function testUpdateRewardsControllerSuccess() public {
     //     address newController = vm.addr(7);
