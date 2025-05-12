@@ -128,8 +128,8 @@ contract ERC20VaultInvariantTest is Test {
             address(SWAP_ROUTER)
         );
 
-        vault.setInterestCollector(address(interestCollector));
-        vault.toggleInterestCollection(true);
+        // vault.setInterestCollector(address(interestCollector));
+        // vault.toggleInterestCollection(true);
 
         interestCollector.registerVault(address(vault), INTEREST_RATE);
 
@@ -182,29 +182,29 @@ contract ERC20VaultInvariantTest is Test {
     // ================== HANDLERS ================== //
     // ============================================== //
 
-    function _collectInterest(uint256 positionId, uint256 debtAmount) internal {
-        if (
-            address(vault.interestCollector()) != address(0) &&
-            vault.interestCollectionEnabled()
-        ) {
-            if (debtAmount > 0) {
-                uint256 interestDue = interestCollector.calculateInterestDue(
-                    address(vault),
-                    positionId,
-                    debtAmount
-                );
-                if (
-                    interestDue > 0 &&
-                    interestCollector.isCollectionReady(
-                        address(vault),
-                        positionId
-                    )
-                ) {
-                    interestAccrued[positionId] += interestDue;
-                }
-            }
-        }
-    }
+    // function _collectInterest(uint256 positionId, uint256 debtAmount) internal {
+    //     if (
+    //         address(vault.interestCollector()) != address(0) &&
+    //         vault.interestCollectionEnabled()
+    //     ) {
+    //         if (debtAmount > 0) {
+    //             uint256 interestDue = interestCollector.calculateInterestDue(
+    //                 address(vault),
+    //                 positionId,
+    //                 debtAmount
+    //             );
+    //             if (
+    //                 interestDue > 0 &&
+    //                 interestCollector.isCollectionReady(
+    //                     address(vault),
+    //                     positionId
+    //                 )
+    //             ) {
+    //                 interestAccrued[positionId] += interestDue;
+    //             }
+    //         }
+    //     }
+    // }
 
     function handler_openPosition(
         uint256 collateralAmount,
@@ -343,8 +343,8 @@ contract ERC20VaultInvariantTest is Test {
                 WETH.balanceOf(address(vault)) >= withdrawAmount &&
                 owner == user1
             ) {
-                // Simulate interest collection (since _collectInterestIfAvailable is called in withdrawCollateral)
-                _collectInterest(positionId, posDebt);
+                // // Simulate interest collection (since _collectInterestIfAvailable is called in withdrawCollateral)
+                // _collectInterest(positionId, posDebt);
 
                 try vault.withdrawCollateral(positionId, withdrawAmount) {
                     withdrawnCollateral[positionId] += withdrawAmount;
@@ -407,8 +407,8 @@ contract ERC20VaultInvariantTest is Test {
                 shezUSD.balanceOf(user1) >= repayAmount &&
                 owner == user1
             ) {
-                // Simulate interest collection (since _collectInterestIfAvailable is called in repayDebt)
-                _collectInterest(positionId, repayAmount);
+                // // Simulate interest collection (since _collectInterestIfAvailable is called in repayDebt)
+                // _collectInterest(positionId, repayAmount);
 
                 try vault.repayDebt(positionId, repayAmount) {
                     repaidDebt[positionId] += repayAmount;
@@ -476,8 +476,8 @@ contract ERC20VaultInvariantTest is Test {
                 WETH.balanceOf(address(vault)) >= collateralAmount &&
                 shezUSD.balanceOf(address(owner)) >= debtAmount
             ) {
-                // Simulate interest collection (since _collectInterestIfAvailable is called in liquidatePosition)
-                _collectInterest(positionId, debtAmount);
+                // // Simulate interest collection (since _collectInterestIfAvailable is called in liquidatePosition)
+                // _collectInterest(positionId, debtAmount);
 
                 // Store the pre-liquidation collateral amount
                 preLiquidationCollateral[positionId] = collateralAmount;
@@ -623,7 +623,7 @@ contract ERC20VaultInvariantTest is Test {
         if (
             borrowAmount > 0 && newLoanValue <= maxLoanValue && owner == user1
         ) {
-            _collectInterest(positionId, posDebt);
+            // _collectInterest(positionId, posDebt);
 
             try vault.borrow(positionId, borrowAmount) {
                 initialDebt[positionId] += borrowAmount;

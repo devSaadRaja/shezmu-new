@@ -66,8 +66,8 @@ contract InterestCollectorTest is Test {
             address(shezUSDPriceFeed),
             treasury
         );
-        vault.setInterestCollector(address(interestCollector));
-        vault.toggleInterestCollection(true);
+        // vault.setInterestCollector(address(interestCollector));
+        // vault.toggleInterestCollection(true);
 
         // Register vault with interest rate
         interestCollector.registerVault(address(vault), INTEREST_RATE);

@@ -9,7 +9,6 @@ import {SoulBound} from "./SoulBound.sol";
 
 import {EERC20} from "./interfaces/EERC20.sol";
 import {IPriceFeed} from "./interfaces/IPriceFeed.sol";
-import {IInterestCollector} from "./interfaces/IInterestCollector.sol";
 
 contract ERC20Vault is ReentrancyGuard, AccessControl {
     // =============================================== //
@@ -22,7 +21,6 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         address owner;
         uint256 collateralAmount;
         uint256 debtAmount;
-        uint256 lastInterestCollectionBlock;
         uint256 effectiveLtvRatio;
     }
 
@@ -51,9 +49,6 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
     mapping(address => uint256) loanBalances;
 
     uint256 public totalDebt;
-    bool public interestCollectionEnabled;
-    IInterestCollector public interestCollector;
-
     address public treasury; // to receive penalty amounts
 
     // ============================================ //
@@ -76,9 +71,6 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         uint256 collateralSeized,
         uint256 debtRepaid
     );
-    event InterestCollectorSet(address indexed interestCollector);
-    event InterestCollected(uint256 interestAmount);
-    event InterestCollectionToggled(bool enabled);
     event PositionDeleted(uint256 indexed positionId);
     event BatchPositionsLiquidated(
         uint256[] positionIds,
@@ -110,8 +102,6 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
     error EmergencyWithdrawFailed();
     error PositionNotLiquidatable();
     error LiquidationFailed();
-    error InterestCollectorNotSet();
-    error InterestCollectionFailed();
     error InsufficientFee();
     error NoPositionsToLiquidate();
 
@@ -159,7 +149,7 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
     /// @return owner The address of the position owner
     /// @return collateralAmount The amount of collateral in the position
     /// @return debtAmount The amount of debt in the position
-    /// @return the block number for last interest collected
+    /// @return effectiveLtvRatio The calculated ltvRatio in the position
     function getPosition(
         uint256 positionId
     ) external view returns (address, uint256, uint256, uint256) {
@@ -168,7 +158,7 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
             position.owner,
             position.collateralAmount,
             position.debtAmount,
-            position.lastInterestCollectionBlock
+            position.effectiveLtvRatio
         );
     }
 
@@ -314,7 +304,6 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
             owner,
             collateralAmount,
             debtAmount,
-            block.number,
             ltvRatio
         );
         userPositionIds[owner].push(positionId);
@@ -325,8 +314,6 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         totalDebt += debtAmount;
 
         loanToken.mint(owner, debtAmount);
-
-        interestCollector.setLastCollectionBlock(address(this), positionId);
 
         Position storage pos = positions[positionId];
 
@@ -402,8 +389,6 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
             revert AmountExceedsLoan();
         }
 
-        _collectInterestIfAvailable(positionId);
-
         loanToken.burn(msg.sender, debtAmount);
 
         positions[positionId].debtAmount -= debtAmount;
@@ -458,8 +443,6 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
             revert InsufficientCollateral();
         }
 
-        _collectInterestIfAvailable(positionId);
-
         uint256 newCollateralAmount = positions[positionId].collateralAmount -
             amount;
         uint256 currentDebt = positions[positionId].debtAmount;
@@ -505,8 +488,6 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         if (positionOwner == address(0)) revert InvalidPosition();
         if (!isLiquidatable(positionId)) revert PositionNotLiquidatable();
 
-        _collectInterestIfAvailable(positionId);
-
         uint256 reward = (collateralAmount * liquidatorReward) / 100;
         uint256 penalty = (collateralAmount * penaltyRate) / 100;
         uint256 remainingCollateral = collateralAmount - reward - penalty;
@@ -550,8 +531,6 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
 
             if (positionOwner == address(0)) continue;
             if (!isLiquidatable(positionId)) continue;
-
-            _collectInterestIfAvailable(positionId);
 
             uint256 collateralAmount = position.collateralAmount;
             uint256 debtAmount = position.debtAmount;
@@ -597,28 +576,6 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         emit BatchPositionsLiquidated(positionIds, msg.sender, totalReward);
     }
 
-    /// @notice Mint interest amount to InterestCollector
-    /// @dev Can only be called by InterestCollector
-    /// @param positionId The ID of the position to collect interest from
-    /// @param interestAmount The interest amount to be collected
-    function collectInterest(
-        uint256 positionId,
-        uint256 interestAmount
-    ) external {
-        require(msg.sender == address(interestCollector));
-
-        loanToken.mint(address(interestCollector), interestAmount);
-
-        totalDebt += interestAmount;
-
-        Position storage pos = positions[positionId];
-        pos.debtAmount += interestAmount;
-        loanBalances[pos.owner] += interestAmount;
-        pos.lastInterestCollectionBlock = block.number;
-
-        emit InterestCollected(interestAmount);
-    }
-
     /// @notice Allows users to opt out of soul-bound token minting
     /// @param status The status to set for doNotMint (true = opt out, false = opt in)
     function setDoNotMint(bool status) external {
@@ -662,24 +619,6 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         if (!success) revert EmergencyWithdrawFailed();
     }
 
-    /// @notice Set the interest collector contract address
-    /// @param _interestCollector The address of the interest collector contract
-    function setInterestCollector(
-        address _interestCollector
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        interestCollector = IInterestCollector(_interestCollector);
-        emit InterestCollectorSet(_interestCollector);
-    }
-
-    /// @notice Enable or disable interest collection
-    /// @param _enabled Whether interest collection should be enabled
-    function toggleInterestCollection(
-        bool _enabled
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        interestCollectionEnabled = _enabled;
-        emit InterestCollectionToggled(_enabled);
-    }
-
     // ======================================================== //
     // ================== INTERNAL FUNCTIONS ================== //
     // ======================================================== //
@@ -711,8 +650,6 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
     ) internal {
         if (amount == 0) revert ZeroLoanAmount();
         Position storage position = positions[positionId];
-
-        _collectInterestIfAvailable(positionId);
 
         uint256 newDebtAmount = position.debtAmount + amount;
 
@@ -760,28 +697,5 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         (, int256 price, , , ) = priceFeed.latestRoundData();
         if (price <= 0) revert InvalidPrice();
         return uint256(price) * 10 ** (18 - priceFeed.decimals());
-    }
-
-    /// @notice Internal function to collect interest if conditions are met
-    /// @param positionId The ID of the position to collect interest
-    function _collectInterestIfAvailable(uint256 positionId) internal {
-        if (
-            address(interestCollector) == address(0) ||
-            !interestCollectionEnabled
-        ) return;
-
-        Position memory pos = positions[positionId];
-        if (pos.debtAmount == 0) return;
-
-        try
-            interestCollector.collectInterest(
-                address(this),
-                address(loanToken),
-                positionId,
-                pos.debtAmount
-            )
-        {} catch {
-            // Continue execution even if interest collection fails
-        }
     }
 }

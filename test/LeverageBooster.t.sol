@@ -113,8 +113,8 @@ contract LeverageBoosterTest is Test {
             address(SWAP_ROUTER)
         );
 
-        vault.setInterestCollector(address(interestCollector));
-        vault.toggleInterestCollection(true);
+        // vault.setInterestCollector(address(interestCollector));
+        // vault.toggleInterestCollection(true);
 
         interestCollector.registerVault(address(vault), INTEREST_RATE);
 

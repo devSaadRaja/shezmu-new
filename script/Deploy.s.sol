@@ -68,8 +68,8 @@ contract DeployScript is Script {
         interestCollector = new InterestCollector(treasury);
 
         // Setup permissions and configurations
-        vault.setInterestCollector(address(interestCollector));
-        vault.toggleInterestCollection(true);
+        // vault.setInterestCollector(address(interestCollector));
+        // vault.toggleInterestCollection(true);
         interestCollector.registerVault(address(vault), INTEREST_RATE);
 
         WETH.transfer(user1, 2_000_000 ether);
