@@ -28,9 +28,10 @@ contract RehypothecationVaultTest is Test {
     IERC20 rewardToken;
 
     address deployer = vm.addr(1);
-    address user1 = vm.addr(2);
-    address user2 = vm.addr(3);
-    address treasury = vm.addr(4);
+    address vault = vm.addr(2);
+    address user1 = vm.addr(3);
+    address user2 = vm.addr(4);
+    address treasury = vm.addr(5);
 
     // =========================================== //
     // ================== SETUP ================== //
@@ -63,416 +64,600 @@ contract RehypothecationVaultTest is Test {
             address(INCENTIVES_V3)
         );
 
-        rehypoVault.setVault(user1);
+        // rehypoVault.setVault(user1);
+        rehypoVault.setVault(vault);
 
-        collateralToken.transfer(user1, 2_000_000 ether);
-        collateralToken.transfer(user2, 2_000_000 ether);
+        // collateralToken.transfer(user1, 2_000_000 ether);
+        // collateralToken.transfer(user2, 2_000_000 ether);
+        collateralToken.transfer(vault, 2_000_000 ether);
+
+        // ! ACCESS_CONTROL
+        // collateralToken.approve(address(rehypoVault), 1);
+        // rehypoVault.deposit(0, 1);
 
         vm.stopPrank();
+
+        vm.startPrank(address(vault));
+        collateralToken.approve(address(rehypoVault), 1);
+        rehypoVault.deposit(0, 1);
+        vm.stopPrank();
+
+        vm.prank(deployer);
+        rehypoVault.setUserUseReserveAsCollateral();
     }
 
     // ================================================ //
     // ================== TEST CASES ================== //
     // ================================================ //
 
-    // function test_TEST() public {
-    //     // address[] memory reserveAddresses = POOL_V3.getReservesList();
-    //     // for (uint i = 0; i < reserveAddresses.length; i++) {
-    //     //     console.log();
-    //     //     address reserve = reserveAddresses[i];
-    //     //     console.log(reserve, "<<< reserve");
-    //     //     address aT = POOL_V3.getReserveAToken(reserve);
-    //     //     console.log(aT, "<<< aT");
-    //     //     address[] memory rewards = INCENTIVES_V3.getRewardsByAsset(aT);
-    //     //     for (uint j = 0; j < rewards.length; j++) {
-    //     //         console.log(rewards[j], "<<< rewards[j]");
-    //     //     }
-    //     //     console.log();
-    //     // }
+    function test_TEST() public {
+        // address[] memory reserveAddresses = POOL_V3.getReservesList();
+        // for (uint i = 0; i < reserveAddresses.length; i++) {
+        //     console.log();
+        //     address reserve = reserveAddresses[i];
+        //     console.log(reserve, "<<< reserve");
+        //     address aT = POOL_V3.getReserveAToken(reserve);
+        //     console.log(aT, "<<< aT");
+        //     address[] memory rewards = INCENTIVES_V3.getRewardsByAsset(aT);
+        //     for (uint j = 0; j < rewards.length; j++) {
+        //         console.log(rewards[j], "<<< rewards[j]");
+        //     }
+        //     console.log();
+        // }
 
-    //     vm.startPrank(user1);
+        // (
+        //     uint256 totalCollateralBase,
+        //     uint256 totalDebtBase,
+        //     uint256 availableBorrowsBase,
+        //     uint256 currentLiquidationThreshold,
+        //     uint256 ltv,
+        //     uint256 healthFactor
+        // ) = POOL_V3.getUserAccountData(vault);
+        // console.log(totalCollateralBase, "<<< totalCollateralBase");
+        // console.log(totalDebtBase, "<<< totalDebtBase");
+        // console.log(availableBorrowsBase, "<<< availableBorrowsBase");
+        // console.log(
+        //     currentLiquidationThreshold,
+        //     "<<< currentLiquidationThreshold"
+        // );
+        // console.log(ltv, "<<< ltv");
+        // console.log(healthFactor, "<<< healthFactor");
 
-    //     console.log(aToken.balanceOf(user1), "<<< aToken.balanceOf(user1)");
-    //     console.log(
-    //         IERC20(collateralToken).balanceOf(user1),
-    //         "<<< collateralToken.balanceOf(user1)"
+        // (, , , , uint256 reserveFactor, , , , , ) = IPOOL_DATA_PROVIDER
+        //     .getReserveConfigurationData(address(collateralToken));
+        // console.log(reserveFactor, "<<< reserveFactor");
+
+        uint256 principal = 1000 ether;
+
+        address[] memory assets = new address[](1);
+        assets[0] = address(aToken);
+
+        vm.startPrank(vault);
+
+        // DataTypes.ReserveConfigurationMap memory data = POOL_V3
+        //     .getConfiguration(address(collateralToken));
+        // uint256 mask = 1 << 56;
+        // bool isCollateralEnabled = (data.data & mask) != 0;
+        // console.log(isCollateralEnabled, "<<< isCollateralEnabled");
+
+        console.log(aToken.balanceOf(vault), "<<< aToken.balanceOf(vault)");
+        console.log(
+            IERC20(collateralToken).balanceOf(vault),
+            "<<< collateralToken.balanceOf(vault)"
+        );
+        console.log(
+            aToken.balanceOf(address(rehypoVault)),
+            "<<< aToken.balanceOf(address(rehypoVault))"
+        );
+        console.log(
+            IERC20(collateralToken).balanceOf(address(rehypoVault)),
+            "<<< collateralToken.balanceOf(address(rehypoVault))"
+        );
+
+        // !
+        collateralToken.approve(address(rehypoVault), principal);
+        rehypoVault.deposit(1, principal);
+
+        vm.stopPrank();
+
+        vm.prank(deployer);
+        rehypoVault.setUserUseReserveAsCollateral();
+
+        vm.startPrank(vault);
+
+        // collateralToken.approve(address(POOL_V3), principal);
+        // POOL_V3.supply(address(collateralToken), principal, address(rehypoVault), 0);
+
+        // POOL_V3.setUserUseReserveAsCollateral(address(collateralToken), false);
+        // !
+
+        console.log();
+        console.log("AFTER DEPOSIT");
+        console.log(aToken.balanceOf(vault), "<<< aToken.balanceOf(vault)");
+        console.log(
+            IERC20(collateralToken).balanceOf(vault),
+            "<<< collateralToken.balanceOf(vault)"
+        );
+        console.log(
+            aToken.balanceOf(address(rehypoVault)),
+            "<<< aToken.balanceOf(address(rehypoVault))"
+        );
+        console.log(
+            IERC20(collateralToken).balanceOf(address(rehypoVault)),
+            "<<< collateralToken.balanceOf(address(rehypoVault))"
+        );
+        // console.log(
+        //     IERC20(rewardToken).balanceOf(address(rehypoVault)),
+        //     "<<< rewardToken.balanceOf(address(rehypoVault))"
+        // );
+
+        // !
+        vm.warp(block.timestamp + 100 days);
+        // !
+
+        // vm.stopPrank();
+        // vm.startPrank(deployer);
+        // collateralToken.approve(address(POOL_V3), principal);
+        // POOL_V3.supply(address(collateralToken), principal, deployer, 0);
+
+        collateralToken.approve(address(rehypoVault), principal);
+        rehypoVault.deposit(2, principal);
+
+        console.log();
+        console.log("AFTER TIME PASSED");
+        console.log(aToken.balanceOf(vault), "<<< aToken.balanceOf(vault)");
+        console.log(
+            IERC20(collateralToken).balanceOf(vault),
+            "<<< collateralToken.balanceOf(vault)"
+        );
+        console.log(
+            aToken.balanceOf(address(rehypoVault)),
+            "<<< aToken.balanceOf(address(rehypoVault))"
+        );
+        console.log(
+            IERC20(collateralToken).balanceOf(address(rehypoVault)),
+            "<<< collateralToken.balanceOf(address(rehypoVault))"
+        );
+        // console.log(
+        //     IERC20(rewardToken).balanceOf(address(rehypoVault)),
+        //     "<<< rewardToken.balanceOf(address(rehypoVault))"
+        // );
+
+        // console.log(
+        //     INCENTIVES_V3.getUserRewards(assets, address(rehypoVault), address(rewardToken)),
+        //     "<<< USER REWARDS"
+        // );
+        // console.log(
+        //     INCENTIVES_V3.getUserAccruedRewards(address(rehypoVault), address(rewardToken)),
+        //     "<<< ACCRUED REWARDS"
+        // );
+
+        // DataTypes.ReserveDataLegacy memory reserveData = POOL_V3.getReserveData(
+        //     address(collateralToken)
+        // );
+        // console.log();
+        // console.log(principal, "<<< principal");
+        // uint256 timeElapsed = block.timestamp - reserveData.lastUpdateTimestamp;
+        // console.log(timeElapsed, "<<< timeElapsed");
+        // uint256 currentLiquidityRate = reserveData.currentLiquidityRate;
+        // console.log(currentLiquidityRate, "<<< currentLiquidityRate");
+        // uint256 interest = (principal * currentLiquidityRate * timeElapsed) /
+        //     (365 * 24 * 3600 * 1e27);
+        // console.log(interest, "<<< interest");
+
+        // !
+        // rehypoVault.withdraw(1);
+        // POOL_V3.withdraw(address(collateralToken), principal + interest, address(rehypoVault)); // type(uint256).max
+
+        // INCENTIVES_V3.claimRewards(
+        //     assets,
+        //     type(uint256).max,
+        //     address(rehypoVault),
+        //     address(rewardToken)
+        // );
+        // !
+
+        // console.log();
+        // console.log("AFTER CLAIM");
+        // console.log(aToken.balanceOf(address(rehypoVault)), "<<< aToken.balanceOf(address(rehypoVault))");
+        // console.log(
+        //     IERC20(collateralToken).balanceOf(address(rehypoVault)),
+        //     "<<< collateralToken.balanceOf(address(rehypoVault))"
+        // );
+        // console.log(
+        //     IERC20(rewardToken).balanceOf(address(rehypoVault)),
+        //     "<<< rewardToken.balanceOf(address(rehypoVault))"
+        // );
+
+        vm.stopPrank();
+    }
+
+    // function testInitialize() public {
+    //     vm.startPrank(deployer);
+    //     RehypothecationVault newVault = new RehypothecationVault();
+    //     newVault.initialize(
+    //         treasury,
+    //         address(collateralToken),
+    //         address(aToken),
+    //         address(rewardToken),
+    //         address(POOL_V3),
+    //         address(INCENTIVES_V3)
     //     );
 
-    //     // !
-    //     collateralToken.approve(address(rehypoVault), 1000 ether);
-    //     rehypoVault.deposit(1, 1000 ether);
-
-    //     // collateralToken.approve(address(POOL_V3), 1000 ether);
-    //     // POOL_V3.supply(address(collateralToken), 1000 ether, user1, 0);
-    //     // !
-
-    //     console.log();
-    //     console.log("AFTER DEPOSIT");
-    //     console.log(aToken.balanceOf(user1), "<<< aToken.balanceOf(user1)");
-    //     console.log(
-    //         IERC20(collateralToken).balanceOf(user1),
-    //         "<<< collateralToken.balanceOf(user1)"
+    //     assertEq(newVault.owner(), deployer, "Owner not set correctly");
+    //     assertEq(newVault.treasury(), treasury, "Treasury not set correctly");
+    //     assertEq(
+    //         address(newVault.collateralToken()),
+    //         address(collateralToken),
+    //         "Collateral token not set correctly"
     //     );
-    //     console.log(
-    //         IERC20(rewardToken).balanceOf(user1),
-    //         "<<< rewardToken.balanceOf(user1)"
+    //     assertEq(
+    //         address(newVault.rewardToken()),
+    //         address(aToken),
+    //         "Reward token not set correctly"
     //     );
-
-    //     vm.warp(block.timestamp + 120 days);
-
-    //     // !
-    //     // rehypoVault.withdraw(1);
-
-    //     // POOL_V3.withdraw(address(collateralToken), type(uint256).max, user1);
-
-    //     address[] memory assets = new address[](1);
-    //     assets[0] = address(aToken);
-    //     console.log(
-    //         INCENTIVES_V3.getUserRewards(assets, user1, address(rewardToken)),
-    //         "<<< USER REWARDS"
+    //     assertEq(
+    //         address(newVault.pool()),
+    //         address(POOL_V3),
+    //         "Pool not set correctly"
     //     );
-    //     console.log(
-    //         INCENTIVES_V3.getUserAccruedRewards(user1, address(rewardToken)),
-    //         "<<< ACCRUED REWARDS"
+    //     assertEq(
+    //         address(newVault.rewardsController()),
+    //         address(INCENTIVES_V3),
+    //         "Rewards controller not set correctly"
     //     );
-    //     // INCENTIVES_V3.claimRewards(
-    //     //     assets,
-    //     //     type(uint256).max,
-    //     //     user1,
-    //     //     address(rewardToken)
-    //     // );
-    //     // !
+    // }
 
-    //     console.log();
-    //     console.log("AFTER CLAIM");
-    //     console.log(aToken.balanceOf(user1), "<<< aToken.balanceOf(user1)");
-    //     console.log(
-    //         IERC20(collateralToken).balanceOf(user1),
-    //         "<<< collateralToken.balanceOf(user1)"
-    //     );
-    //     console.log(
-    //         IERC20(rewardToken).balanceOf(user1),
-    //         "<<< rewardToken.balanceOf(user1)"
+    // function testDepositSuccess() public {
+    //     uint256 positionId = 1;
+    //     uint256 amount = 1000 ether;
+
+    //     vm.startPrank(vault);
+    //     uint256 initialBalance = collateralToken.balanceOf(vault);
+    //     uint256 initialVaultBalance = collateralToken.balanceOf(
+    //         address(rehypoVault)
     //     );
 
+    //     collateralToken.approve(address(rehypoVault), amount);
+    //     rehypoVault.deposit(positionId, amount);
+
+    //     assertEq(
+    //         rehypoVault.amounts(positionId),
+    //         amount,
+    //         "Amount not recorded correctly"
+    //     );
+    //     assertEq(
+    //         collateralToken.balanceOf(vault),
+    //         initialBalance - amount,
+    //         "User balance not updated"
+    //     );
+    //     assertEq(
+    //         collateralToken.balanceOf(address(rehypoVault)),
+    //         initialVaultBalance,
+    //         "Vault balance should not hold tokens"
+    //     );
     //     vm.stopPrank();
     // }
 
-    function testInitialize() public {
-        vm.startPrank(deployer);
-        RehypothecationVault newVault = new RehypothecationVault();
-        newVault.initialize(
-            treasury,
-            address(collateralToken),
-            address(aToken),
-            address(rewardToken),
-            address(POOL_V3),
-            address(INCENTIVES_V3)
-        );
+    // function testDepositZeroAmount() public {
+    //     vm.startPrank(vault);
+    //     vm.expectRevert(RehypothecationVault.ZeroAmount.selector);
+    //     rehypoVault.deposit(1, 0);
+    //     vm.stopPrank();
+    // }
 
-        assertEq(newVault.owner(), deployer, "Owner not set correctly");
-        assertEq(newVault.treasury(), treasury, "Treasury not set correctly");
-        assertEq(
-            address(newVault.collateralToken()),
-            address(collateralToken),
-            "Collateral token not set correctly"
-        );
-        assertEq(
-            address(newVault.rewardToken()),
-            address(aToken),
-            "Reward token not set correctly"
-        );
-        assertEq(
-            address(newVault.pool()),
-            address(POOL_V3),
-            "Pool not set correctly"
-        );
-        assertEq(
-            address(newVault.rewardsController()),
-            address(INCENTIVES_V3),
-            "Rewards controller not set correctly"
-        );
-    }
+    // function testDepositUnauthorized() public {
+    //     uint256 positionId = 1;
+    //     uint256 amount = 1_000_000 ether;
 
-    function testDepositSuccess() public {
-        uint256 positionId = 1;
-        uint256 amount = 1000 ether;
+    //     vm.startPrank(user2); // user2 is not the rehypoVault
+    //     vm.expectRevert(RehypothecationVault.Unauthorized.selector);
+    //     rehypoVault.deposit(positionId, amount);
+    //     vm.stopPrank();
+    // }
 
-        vm.startPrank(user1);
-        uint256 initialBalance = collateralToken.balanceOf(user1);
-        uint256 initialVaultBalance = collateralToken.balanceOf(
-            address(rehypoVault)
-        );
+    // function testWithdraw() public {
+    //     uint256 positionId = 1;
+    //     uint256 amount = 10000 ether;
 
-        collateralToken.approve(address(rehypoVault), amount);
-        rehypoVault.deposit(positionId, amount);
+    //     // Deposit
+    //     vm.startPrank(vault);
+    //     collateralToken.approve(address(rehypoVault), amount);
+    //     rehypoVault.deposit(positionId, amount);
 
-        assertEq(
-            rehypoVault.amounts(positionId),
-            amount,
-            "Amount not recorded correctly"
-        );
-        assertEq(
-            collateralToken.balanceOf(user1),
-            initialBalance - amount,
-            "User balance not updated"
-        );
-        assertEq(
-            collateralToken.balanceOf(address(rehypoVault)),
-            initialVaultBalance,
-            "Vault balance should not hold tokens"
-        );
-        vm.stopPrank();
-    }
+    //     // Withdraw
+    //     uint256 expectedUserBalance = collateralToken.balanceOf(vault) + amount;
+    //     uint256 expectedTreasuryBalance = collateralToken.balanceOf(treasury);
 
-    function testDepositZeroAmount() public {
-        vm.startPrank(user1);
-        vm.expectRevert(RehypothecationVault.ZeroAmount.selector);
-        rehypoVault.deposit(1, 0);
-        vm.stopPrank();
-    }
+    //     rehypoVault.withdraw(positionId, amount);
 
-    function testDepositActivePosition() public {
-        uint256 positionId = 1;
-        uint256 amount = 1000 ether;
+    //     assertEq(
+    //         rehypoVault.amounts(positionId),
+    //         0,
+    //         "Position amount not cleared"
+    //     );
+    //     assertEq(
+    //         collateralToken.balanceOf(vault),
+    //         expectedUserBalance,
+    //         "User balance not updated"
+    //     );
+    //     assertEq(
+    //         collateralToken.balanceOf(treasury),
+    //         expectedTreasuryBalance,
+    //         "Treasury balance not updated"
+    //     );
+    //     vm.stopPrank();
+    // }
 
-        vm.startPrank(user1);
-        collateralToken.approve(address(rehypoVault), amount);
-        rehypoVault.deposit(positionId, amount);
+    // function testWithdrawUnauthorized() public {
+    //     uint256 positionId = 1;
+    //     uint256 amount = 10000 ether;
 
-        vm.expectRevert(RehypothecationVault.AlreadyActive.selector);
-        rehypoVault.deposit(positionId, amount);
-        vm.stopPrank();
-    }
+    //     // Deposit
+    //     vm.startPrank(vault);
+    //     collateralToken.approve(address(rehypoVault), amount);
+    //     rehypoVault.deposit(positionId, amount);
+    //     vm.stopPrank();
 
-    function testDepositUnauthorized() public {
-        uint256 positionId = 1;
-        uint256 amount = 1_000_000 ether;
+    //     // Try to withdraw as user2
+    //     vm.startPrank(user2);
+    //     vm.expectRevert(RehypothecationVault.Unauthorized.selector);
+    //     rehypoVault.withdraw(positionId, amount);
+    //     vm.stopPrank();
+    // }
 
-        vm.startPrank(user2); // user2 is not the rehypoVault
-        vm.expectRevert(RehypothecationVault.Unauthorized.selector);
-        rehypoVault.deposit(positionId, amount);
-        vm.stopPrank();
-    }
+    // function testSetVaultSuccess() public {
+    //     vm.startPrank(deployer);
+    //     rehypoVault.setVault(user2);
+    //     assertEq(rehypoVault.vault(), user2, "Vault address not updated");
+    //     vm.stopPrank();
+    // }
 
-    function testWithdrawWithInterest() public {
-        uint256 positionId = 1;
-        uint256 amount = 10000 ether;
+    // function testSetVaultNonOwner() public {
+    //     vm.startPrank(user2);
+    //     vm.expectRevert(
+    //         abi.encodeWithSelector(
+    //             OwnableUpgradeable.OwnableUnauthorizedAccount.selector,
+    //             user2
+    //         )
+    //     );
+    //     rehypoVault.setVault(user2);
+    //     vm.stopPrank();
+    // }
 
-        vm.startPrank(user1);
-        collateralToken.approve(address(rehypoVault), amount);
-        rehypoVault.deposit(positionId, amount);
+    // function testUpdatePoolProxySuccess() public {
+    //     address newPool = vm.addr(6);
 
-        uint256 oldUserBalance = collateralToken.balanceOf(treasury);
-        uint256 oldTreasuryAmount = collateralToken.balanceOf(treasury);
+    //     vm.startPrank(deployer);
+    //     rehypoVault.updatePoolProxy(newPool);
+    //     assertEq(
+    //         address(rehypoVault.pool()),
+    //         newPool,
+    //         "Pool address not updated"
+    //     );
+    //     vm.stopPrank();
+    // }
 
-        vm.warp(block.timestamp + 100 days); // pass 100 days
+    // function testUpdatePoolProxyZeroAddress() public {
+    //     vm.startPrank(deployer);
+    //     vm.expectRevert(RehypothecationVault.InvalidAddress.selector);
+    //     rehypoVault.updatePoolProxy(address(0));
+    //     vm.stopPrank();
+    // }
 
-        rehypoVault.withdraw(positionId);
+    // function testUpdatePoolProxyNonOwner() public {
+    //     vm.startPrank(user2);
+    //     vm.expectRevert(
+    //         abi.encodeWithSelector(
+    //             OwnableUpgradeable.OwnableUnauthorizedAccount.selector,
+    //             user2
+    //         )
+    //     );
+    //     rehypoVault.updatePoolProxy(vm.addr(6));
+    //     vm.stopPrank();
+    // }
 
-        assertEq(
-            rehypoVault.amounts(positionId),
-            0,
-            "Position amount not cleared"
-        );
-        assertGt(
-            collateralToken.balanceOf(user1),
-            oldUserBalance,
-            "User balance not updated"
-        );
-        assertGt(
-            collateralToken.balanceOf(treasury),
-            oldTreasuryAmount,
-            "Treasury balance not updated"
-        );
-        vm.stopPrank();
-    }
+    // function testUpdateRewardsControllerSuccess() public {
+    //     address newController = vm.addr(7);
 
-    function testWithdrawNoInterest() public {
-        uint256 positionId = 1;
-        uint256 amount = 10000 ether;
+    //     vm.startPrank(deployer);
+    //     rehypoVault.updateRewardsController(newController);
+    //     assertEq(
+    //         address(rehypoVault.rewardsController()),
+    //         newController,
+    //         "Rewards controller not updated"
+    //     );
+    //     vm.stopPrank();
+    // }
 
-        // Deposit
-        vm.startPrank(user1);
-        collateralToken.approve(address(rehypoVault), amount);
-        rehypoVault.deposit(positionId, amount);
+    // function testUpdateRewardsControllerZeroAddress() public {
+    //     vm.startPrank(deployer);
+    //     vm.expectRevert(RehypothecationVault.InvalidAddress.selector);
+    //     rehypoVault.updateRewardsController(address(0));
+    //     vm.stopPrank();
+    // }
 
-        // Withdraw
-        uint256 expectedUserBalance = collateralToken.balanceOf(user1) + amount;
-        uint256 expectedTreasuryBalance = collateralToken.balanceOf(treasury);
+    // function testUpdateRewardsControllerNonOwner() public {
+    //     vm.startPrank(user2);
+    //     vm.expectRevert(
+    //         abi.encodeWithSelector(
+    //             OwnableUpgradeable.OwnableUnauthorizedAccount.selector,
+    //             user2
+    //         )
+    //     );
+    //     rehypoVault.updateRewardsController(vm.addr(7));
+    //     vm.stopPrank();
+    // }
 
-        rehypoVault.withdraw(positionId);
+    // function testClaimRewardSuccess() public {
+    //     uint256 positionId = 1;
+    //     uint256 amount = 10000 ether;
 
-        assertEq(
-            rehypoVault.amounts(positionId),
-            0,
-            "Position amount not cleared"
-        );
-        assertEq(
-            collateralToken.balanceOf(user1),
-            expectedUserBalance,
-            "User balance not updated"
-        );
-        assertEq(
-            collateralToken.balanceOf(treasury),
-            expectedTreasuryBalance,
-            "Treasury balance not updated"
-        );
-        vm.stopPrank();
-    }
+    //     vm.startPrank(vault);
+    //     collateralToken.approve(address(rehypoVault), amount);
+    //     rehypoVault.deposit(positionId, amount);
 
-    function testWithdrawUnauthorized() public {
-        uint256 positionId = 1;
-        uint256 amount = 10000 ether;
+    //     uint256 oldVaultBalance = collateralToken.balanceOf(
+    //         address(rehypoVault)
+    //     );
+    //     uint256 oldTreasuryAmount = collateralToken.balanceOf(treasury);
 
-        // Deposit
-        vm.startPrank(user1);
-        collateralToken.approve(address(rehypoVault), amount);
-        rehypoVault.deposit(positionId, amount);
-        vm.stopPrank();
+    //     vm.warp(block.timestamp + 100 days); // pass 100 days
 
-        // Try to withdraw as user2
-        vm.startPrank(user2);
-        vm.expectRevert(RehypothecationVault.Unauthorized.selector);
-        rehypoVault.withdraw(positionId);
-        vm.stopPrank();
-    }
+    //     assertGt(
+    //         rehypoVault.getUserRewards(),
+    //         0,
+    //         "User Rewards should be greater than 0"
+    //     );
 
-    function testSetVaultSuccess() public {
-        vm.startPrank(deployer);
-        rehypoVault.setVault(user2);
-        assertEq(rehypoVault.vault(), user2, "Vault address not updated");
-        vm.stopPrank();
-    }
+    //     rehypoVault.withdraw(positionId, amount);
+    //     assertGt(
+    //         rehypoVault.getAccumulatedRewards(),
+    //         0,
+    //         "Accumulated Rewards should be greater than 0"
+    //     );
 
-    function testSetVaultNonOwner() public {
-        vm.startPrank(user2);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                OwnableUpgradeable.OwnableUnauthorizedAccount.selector,
-                user2
-            )
-        );
-        rehypoVault.setVault(user2);
-        vm.stopPrank();
-    }
+    //     vm.stopPrank();
 
-    function testUpdatePoolProxySuccess() public {
-        address newPool = vm.addr(6);
+    //     vm.startPrank(deployer);
 
-        vm.startPrank(deployer);
-        rehypoVault.updatePoolProxy(newPool);
-        assertEq(
-            address(rehypoVault.pool()),
-            newPool,
-            "Pool address not updated"
-        );
-        vm.stopPrank();
-    }
+    //     rehypoVault.claimReward();
 
-    function testUpdatePoolProxyZeroAddress() public {
-        vm.startPrank(deployer);
-        vm.expectRevert(RehypothecationVault.InvalidAddress.selector);
-        rehypoVault.updatePoolProxy(address(0));
-        vm.stopPrank();
-    }
+    //     uint256 rehypoRewardBalance = rewardToken.balanceOf(
+    //         address(rehypoVault)
+    //     );
 
-    function testUpdatePoolProxyNonOwner() public {
-        vm.startPrank(user2);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                OwnableUpgradeable.OwnableUnauthorizedAccount.selector,
-                user2
-            )
-        );
-        rehypoVault.updatePoolProxy(vm.addr(6));
-        vm.stopPrank();
-    }
+    //     assertGt(
+    //         rehypoRewardBalance,
+    //         oldVaultBalance,
+    //         "User reward balance not updated"
+    //     );
 
-    function testUpdateRewardsControllerSuccess() public {
-        address newController = vm.addr(7);
+    //     rehypoVault.withdrawToken(address(rewardToken), rehypoRewardBalance);
 
-        vm.startPrank(deployer);
-        rehypoVault.updateRewardsController(newController);
-        assertEq(
-            address(rehypoVault.rewardsController()),
-            newController,
-            "Rewards controller not updated"
-        );
-        vm.stopPrank();
-    }
+    //     assertGt(
+    //         rewardToken.balanceOf(treasury),
+    //         oldTreasuryAmount,
+    //         "Treasury reward balance not updated"
+    //     );
+    //     vm.stopPrank();
+    // }
 
-    function testUpdateRewardsControllerZeroAddress() public {
-        vm.startPrank(deployer);
-        vm.expectRevert(RehypothecationVault.InvalidAddress.selector);
-        rehypoVault.updateRewardsController(address(0));
-        vm.stopPrank();
-    }
+    // function testClaimRewardZeroRewards() public {
+    //     vm.startPrank(deployer);
+    //     vm.expectRevert(RehypothecationVault.ZeroReward.selector);
+    //     rehypoVault.claimReward();
+    //     vm.stopPrank();
+    // }
 
-    function testUpdateRewardsControllerNonOwner() public {
-        vm.startPrank(user2);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                OwnableUpgradeable.OwnableUnauthorizedAccount.selector,
-                user2
-            )
-        );
-        rehypoVault.updateRewardsController(vm.addr(7));
-        vm.stopPrank();
-    }
+    // function testClaimRewardUnauthorized() public {
+    //     vm.startPrank(user2); // user2 is not the vault
+    //     vm.expectRevert(
+    //         abi.encodeWithSelector(
+    //             OwnableUpgradeable.OwnableUnauthorizedAccount.selector,
+    //             user2
+    //         )
+    //     );
+    //     rehypoVault.claimReward();
+    //     vm.stopPrank();
+    // }
 
-    function testClaimRewardSuccess() public {
-        uint256 positionId = 1;
-        uint256 amount = 10000 ether;
+    // function testWithdrawTokenSuccess() public {
+    //     uint256 amount = 1000 ether;
 
-        vm.startPrank(user1);
-        collateralToken.approve(address(rehypoVault), amount);
-        rehypoVault.deposit(positionId, amount);
+    //     vm.startPrank(deployer);
+    //     collateralToken.transfer(address(rehypoVault), amount);
 
-        uint256 oldUserBalance = collateralToken.balanceOf(treasury);
-        uint256 oldTreasuryAmount = collateralToken.balanceOf(treasury);
+    //     rehypoVault.withdrawToken(address(collateralToken), amount);
 
-        vm.warp(block.timestamp + 100 days); // pass 100 days
+    //     assertEq(
+    //         collateralToken.balanceOf(treasury),
+    //         amount,
+    //         "Treasury balance not updated"
+    //     );
+    //     assertEq(
+    //         collateralToken.balanceOf(address(rehypoVault)),
+    //         0,
+    //         "Vault balance not cleared"
+    //     );
+    //     vm.stopPrank();
+    // }
 
-        assertGt(
-            rehypoVault.getUserRewards(address(rehypoVault)),
-            0,
-            "User Rewards should be greater than 0"
-        );
+    // function testWithdrawTokenZeroAmount() public {
+    //     vm.startPrank(deployer);
+    //     vm.expectRevert(RehypothecationVault.ZeroAmount.selector);
+    //     rehypoVault.withdrawToken(address(collateralToken), 0);
+    //     vm.stopPrank();
+    // }
 
-        rehypoVault.withdraw(positionId);
-        assertGt(
-            rehypoVault.getAccumulatedRewards(address(rehypoVault)),
-            0,
-            "Accumulated Rewards should be greater than 0"
-        );
+    // function testWithdrawTokenNonOwner() public {
+    //     vm.startPrank(user2);
+    //     vm.expectRevert(
+    //         abi.encodeWithSelector(
+    //             OwnableUpgradeable.OwnableUnauthorizedAccount.selector,
+    //             user2
+    //         )
+    //     );
+    //     rehypoVault.withdrawToken(address(collateralToken), 100_000 ether);
+    //     vm.stopPrank();
+    // }
 
-        rehypoVault.claimReward();
+    // function testMultipleUsers() public {
+    //     uint256 positionId1 = 1;
+    //     uint256 positionId2 = 2;
+    //     uint256 amount1 = 500 ether;
+    //     uint256 amount2 = 300 ether;
 
-        assertGt(
-            rewardToken.balanceOf(user1),
-            oldUserBalance,
-            "User reward balance not updated"
-        );
-        assertGt(
-            rewardToken.balanceOf(treasury),
-            oldTreasuryAmount,
-            "Treasury reward balance not updated"
-        );
-        vm.stopPrank();
-    }
+    //     uint256 initialBalance = collateralToken.balanceOf(vault);
 
-    function testClaimRewardZeroRewards() public {
-        vm.startPrank(user1);
-        vm.expectRevert(RehypothecationVault.ZeroReward.selector);
-        rehypoVault.claimReward();
-        vm.stopPrank();
-    }
+    //     vm.startPrank(vault);
 
-    function testClaimRewardUnauthorized() public {
-        vm.startPrank(user2); // user2 is not the vault
-        vm.expectRevert(RehypothecationVault.Unauthorized.selector);
-        rehypoVault.claimReward();
-        vm.stopPrank();
-    }
+    //     collateralToken.approve(address(rehypoVault), 1000 ether);
+
+    //     rehypoVault.deposit(positionId1, amount1);
+    //     assertEq(
+    //         rehypoVault.amounts(positionId1),
+    //         amount1,
+    //         "position 1 amount incorrect"
+    //     );
+    //     assertEq(
+    //         collateralToken.balanceOf(vault),
+    //         initialBalance - amount1,
+    //         "vault first deposit balance incorrect"
+    //     );
+
+    //     rehypoVault.deposit(positionId2, amount2);
+    //     assertEq(
+    //         rehypoVault.amounts(positionId2),
+    //         amount2,
+    //         "position 2 amount incorrect"
+    //     );
+    //     assertEq(
+    //         collateralToken.balanceOf(vault),
+    //         initialBalance - amount1 - amount2,
+    //         "vault second deposit balance incorrect"
+    //     );
+
+    //     // uint256 withdrawAmount1 = 500 ether;
+    //     // rehypoVault.withdraw(positionId1, withdrawAmount1);
+    //     // assertEq(
+    //     //     rehypoVault.amounts(positionId1),
+    //     //     amount1 - withdrawAmount1,
+    //     //     "position 1 amount after withdraw incorrect"
+    //     // );
+    //     // assertEq(
+    //     //     collateralToken.balanceOf(vault),
+    //     //     (initialBalance - amount1 - amount2) + withdrawAmount1,
+    //     //     "vault first withdraw balance incorrect"
+    //     // );
+
+    //     // rehypoVault.withdraw(positionId2, amount2);
+    //     // assertEq(rehypoVault.amounts(positionId2), 0, "position 2 not cleared");
+    //     // assertEq(
+    //     //     collateralToken.balanceOf(vault),
+    //     //     (initialBalance - amount1) + withdrawAmount1,
+    //     //     "vault second withdraw balance incorrect"
+    //     // );
+    //     vm.stopPrank();
+    // }
 }
