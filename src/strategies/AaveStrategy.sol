@@ -12,11 +12,18 @@ import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol
 import "../interfaces/aave-v3/IPool.sol";
 import "../interfaces/aave-v3/IRewardsController.sol";
 
+import "../libraries/WadRayMath.sol";
+import "../libraries/MathUtils.sol";
+
 contract AaveStrategy is
     Initializable,
     OwnableUpgradeable,
     ReentrancyGuardUpgradeable
 {
+    using WadRayMath for uint128;
+    using WadRayMath for uint256;
+    using MathUtils for uint256;
+
     // =============================================== //
     // ================== STRUCTURE ================== //
     // =============================================== //
@@ -24,6 +31,7 @@ contract AaveStrategy is
     struct Position {
         address owner;
         uint256 collateralAmount;
+        uint256 liquidityIndex;
         uint256 lastUpdateTimestamp;
     }
 
@@ -171,11 +179,19 @@ contract AaveStrategy is
         if (amount == 0) revert ZeroAmount();
         // if (positions[positionId].collateralAmount > 0) revert AlreadyActive();
 
+        DataTypes.ReserveDataLegacy memory reserveData = pool.getReserveData(
+            address(collateralToken)
+        );
+
         collateralToken.transferFrom(msg.sender, address(this), amount);
 
-        positions[positionId].owner = user;
-        positions[positionId].collateralAmount = amount;
-        positions[positionId].lastUpdateTimestamp = block.timestamp;
+        positions[positionId].collateralAmount += amount;
+
+        if (positions[positionId].owner == address(0)) {
+            positions[positionId].owner = user;
+            positions[positionId].lastUpdateTimestamp = block.timestamp;
+            positions[positionId].liquidityIndex = reserveData.liquidityIndex;
+        }
 
         totalDeposited += amount;
 
@@ -282,17 +298,78 @@ contract AaveStrategy is
     function _getAccumulatedInterest(
         uint256 positionId
     ) internal view returns (uint256) {
+        Position memory position = positions[positionId];
+        if (position.collateralAmount == 0) return 0;
+
         DataTypes.ReserveDataLegacy memory reserveData = pool.getReserveData(
             address(collateralToken)
         );
-        uint256 timeElapsed = block.timestamp -
-            positions[positionId].lastUpdateTimestamp;
-        uint256 currentLiquidityRate = reserveData.currentLiquidityRate;
-        uint256 interest = (positions[positionId].collateralAmount *
-            currentLiquidityRate *
-            timeElapsed) / (SECONDS_IN_A_YEAR * RAY);
+        uint256 initialLiquidityIndex = position.liquidityIndex;
+        uint256 currentLiquidityIndex = reserveData.liquidityIndex;
+
+        console.log(initialLiquidityIndex, "<<< initialLiquidityIndex");
+        console.log(currentLiquidityIndex, "<<< currentLiquidityIndex");
+
+        // uint256 scaledBalance = (position.collateralAmount * RAY) /
+        //     initialLiquidityIndex;
+
+        uint256 scaledBalance = position.collateralAmount.rayDiv(reserveData.liquidityIndex);
+
+        console.log(scaledBalance, "<<< scaledBalance");
+
+        uint256 updatedBalance = (scaledBalance * currentLiquidityIndex) / RAY;
+
+        uint256 interest = updatedBalance - position.collateralAmount;
 
         return interest;
+
+        // ! ---
+
+        // Position memory position = positions[positionId];
+        // if (position.collateralAmount == 0) return 0;
+
+        // console.log();
+
+        // console.log(position.collateralAmount, "<<< position.collateralAmount");
+
+        // DataTypes.ReserveDataLegacy memory reserveData = pool.getReserveData(
+        //     address(collateralToken)
+        // );
+        // uint256 totalBalance = position.collateralAmount.rayMul(
+        //     reserveData.liquidityIndex.rayDiv(position.liquidityIndex)
+        // );
+
+        // console.log(
+        //     reserveData.liquidityIndex,
+        //     "<<< reserveData.liquidityIndex"
+        // );
+        // console.log(position.liquidityIndex, "<<< position.liquidityIndex");
+        // console.log(
+        //     reserveData.liquidityIndex.rayDiv(position.liquidityIndex),
+        //     "<<< reserveData.liquidityIndex.rayDiv(position.liquidityIndex)"
+        // );
+
+        // console.log(totalBalance, "<<< totalBalance");
+
+        // console.log();
+
+        // return totalBalance - position.collateralAmount;
+
+        // ! ---
+
+        // DataTypes.ReserveDataLegacy memory reserveData = pool.getReserveData(
+        //     address(collateralToken)
+        // );
+        // uint256 timeElapsed = block.timestamp -
+        //     positions[positionId].lastUpdateTimestamp;
+        // uint256 currentLiquidityRate = reserveData.currentLiquidityRate;
+        // uint256 interest = (positions[positionId].collateralAmount *
+        //     currentLiquidityRate *
+        //     timeElapsed) / (SECONDS_IN_A_YEAR * RAY);
+
+        // return interest;
+
+        // ! ---
 
         // Position memory position = positions[positionId];
         // if (position.collateralAmount == 0 || totalDeposited == 0) return 0;
