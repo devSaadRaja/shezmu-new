@@ -138,7 +138,6 @@ contract RehypothecationVault is
         uint256 amount
     ) external nonReentrant onlyVault {
         if (amount == 0) revert ZeroAmount();
-
         collateralToken.transferFrom(msg.sender, address(this), amount);
 
         totalCollateral += amount;
@@ -158,15 +157,9 @@ contract RehypothecationVault is
     ) external nonReentrant onlyVault {
         if (amount == 0) revert ZeroAmount();
         if (amounts[positionId] == 0) revert InsufficientBalance();
+        if (amount > amounts[positionId]) revert InsufficientBalance();
 
-        if (amounts[positionId] - amount == 0) {
-            pool.withdraw(
-                address(collateralToken),
-                type(uint256).max,
-                address(this)
-            );
-        } else pool.withdraw(address(collateralToken), amount, address(this));
-
+        pool.withdraw(address(collateralToken), amount, address(this));
         collateralToken.transfer(msg.sender, amount);
 
         totalCollateral -= amount;
@@ -187,6 +180,7 @@ contract RehypothecationVault is
             address(this)
         );
 
+        collateralToken.approve(address(pool), totalCollateral);
         pool.supply(
             address(collateralToken),
             totalCollateral,
@@ -200,12 +194,12 @@ contract RehypothecationVault is
     /// @notice Withdraws an ERC20 token from this contract
     /// @param token Address of the ERC20 token to withdraw
     /// @param amount Amount of the token to withdraw
-    function withdrawToken(address token, uint256 amount) external onlyOwner {
-        if (token == address(0)) revert InvalidAddress();
+    function withdrawToken(
+        address token,
+        uint256 amount
+    ) external onlyOwner onlyValidAddress(token) {
         if (amount == 0) revert ZeroAmount();
-
-        bool success = IERC20(token).transfer(treasury, amount);
-        if (!success) revert TransferFailed();
+        IERC20(token).transfer(treasury, amount);
 
         emit Withdrawal(token, amount);
     }
@@ -229,7 +223,9 @@ contract RehypothecationVault is
 
     /// @notice Sets the vault address
     /// @param _vault Address of Vault contract
-    function setVault(address _vault) external onlyOwner {
+    function setVault(
+        address _vault
+    ) external onlyOwner onlyValidAddress(_vault) {
         vault = _vault;
     }
 
