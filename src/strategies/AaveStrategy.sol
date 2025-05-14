@@ -7,10 +7,10 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 
-import {IPool} from "./interfaces/aave-v3/IPool.sol";
-import {IRewardsController} from "./interfaces/aave-v3/IRewardsController.sol";
+import {IPool} from "../interfaces/aave-v3/IPool.sol";
+import {IRewardsController} from "../interfaces/aave-v3/IRewardsController.sol";
 
-contract RehypothecationVault is
+contract AaveStrategy is
     Initializable,
     OwnableUpgradeable,
     ReentrancyGuardUpgradeable
