@@ -3,6 +3,7 @@ pragma solidity ^0.8.19;
 
 import "forge-std/Script.sol";
 
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IHooks} from "v4-core/src/interfaces/IHooks.sol";
 import {IPositionManager} from "../test/interfaces/IPositionManager.sol";
 import {IPoolManager} from "v4-core/src/interfaces/IPoolManager.sol";
@@ -18,14 +19,17 @@ import {LiquidityAmounts} from "v4-core/test/utils/LiquidityAmounts.sol";
 
 import {ERC20Vault} from "../src/ERC20Vault.sol";
 import {InterestCollector} from "../src/InterestCollector.sol";
+import {LeverageBooster} from "../src/LeverageBooster.sol";
+import {AaveStrategy} from "../src/strategies/AaveStrategy.sol";
 import {MockERC20} from "../src/mock/MockERC20.sol";
 import {MockERC20Mintable} from "../src/mock/MockERC20Mintable.sol";
 import {MockPriceFeed} from "../src/mock/MockPriceFeed.sol";
 
 import {EERC20} from "../src/interfaces/EERC20.sol";
-import {LeverageBooster} from "../src/LeverageBooster.sol";
 import {IERC20Vault} from "../src/interfaces/IERC20Vault.sol";
 import {IPriceFeed} from "../src/interfaces/IPriceFeed.sol";
+import {IPool} from "../src/interfaces/aave-v3/IPool.sol";
+import {IRewardsController} from "../src/interfaces/aave-v3/IRewardsController.sol";
 
 contract DeployScript is Script {
     using EasyPosm for IPositionManager;
@@ -90,7 +94,8 @@ contract DeployScript is Script {
             LIQUIDATOR_REWARD,
             address(wethPriceFeed),
             address(shezUSDPriceFeed),
-            treasury
+            treasury,
+            address(0)
         );
 
         leverageBooster = new LeverageBooster(
@@ -273,6 +278,92 @@ contract DeployScript is Script {
             expiration,
             new bytes(0)
         );
+
+        vm.stopBroadcast();
+    }
+
+    function deployStrategy() external {
+        address user = 0xC02aB1A5eaA8d1B114EF786D9bde108cD4364359;
+        // string[] memory inputs = new string[](3);
+        // inputs[0] = "cast";
+        // inputs[1] = "rpc";
+        // inputs[2] = string(abi.encodePacked("anvil_impersonateAccount", user));
+        // vm.ffi(inputs);
+
+        // ! MAINNET ADDRESSES
+
+        IPool POOL_V3 = IPool(0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2);
+        IRewardsController INCENTIVES_V3 = IRewardsController(
+            0x8164Cc65827dcFe994AB23944CBC90e0aa80bFcb
+        );
+
+        IERC20 collateralToken = IERC20(
+            0xdC035D45d973E3EC169d2276DDab16f1e407384F
+        ); // USDS (USDS Stablecoin)
+        IERC20 aToken = IERC20(0x32a6268f9Ba3642Dda7892aDd74f1D34469A4259); // aEthUSDS (Aave Ethereum USDS)
+        IERC20 rewardToken = IERC20(0x32a6268f9Ba3642Dda7892aDd74f1D34469A4259); // aEthUSDS (Aave Ethereum USDS)
+
+        // vm.startBroadcast(); // Start with the default signer
+        // vm.allowCheatcodes(address(this)); // Important for some setups
+
+        // // Make the RPC call to impersonate the account
+        // bytes memory result = vm.ffi(
+        //     [
+        //         "curl",
+        //         "-s",
+        //         "-X",
+        //         "POST",
+        //         "http://127.0.0.1:8545", // Your anvil URL
+        //         "-H",
+        //         "Content-Type: application/json",
+        //         "--data",
+        //         string(
+        //             abi.encodePacked(
+        //                 '{"jsonrpc":"2.0","method":"anvil_impersonateAccount","params":["',
+        //                 vm.toString(0xC02aB1A5eaA8d1B114EF786D9bde108cD4364359),
+        //                 '"],"id":1}'
+        //             )
+        //         )
+        //     ]
+        // );
+
+        // vm.stopBroadcast();
+
+        // vm.broadcast(user);
+        // vm.prank(user);
+        // vm.startPrank(user);
+        // vm.startBroadcast(user);
+        // collateralToken.transfer(deployer, 1000 ether);
+        // // vm.stopPrank();
+        // vm.stopBroadcast();
+        // console.log(collateralToken.balanceOf(deployer), "<<< BALANCE");
+
+        // vm.startBroadcast();
+        // deal(address(collateralToken), deployer, 1000 ether);
+        console.log(collateralToken.balanceOf(deployer), "<<< BALANCE");
+        // vm.stopBroadcast();
+
+        vm.startBroadcast(privateKeyDeployer);
+
+        AaveStrategy aaveStrategy = new AaveStrategy();
+        aaveStrategy.initialize(
+            treasury,
+            address(collateralToken),
+            address(aToken),
+            address(rewardToken),
+            address(POOL_V3),
+            address(INCENTIVES_V3)
+        );
+
+        console.log(deployer, "<<< deployer");
+        console.log(address(aaveStrategy), "<<< address(aaveStrategy)");
+
+        aaveStrategy.setVault(deployer);
+
+        collateralToken.approve(address(aaveStrategy), 1 ether);
+        aaveStrategy.deposit(0, 1 ether);
+
+        aaveStrategy.setUserUseReserveAsCollateral();
 
         vm.stopBroadcast();
     }
