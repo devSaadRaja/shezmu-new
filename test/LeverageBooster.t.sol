@@ -103,7 +103,8 @@ contract LeverageBoosterTest is Test {
             LIQUIDATOR_REWARD,
             address(wethPriceFeed),
             address(shezUSDPriceFeed),
-            treasury
+            treasury,
+            address(0)
         );
         interestCollector = new InterestCollector(treasury);
         leverageBooster = new LeverageBooster(
@@ -233,7 +234,7 @@ contract LeverageBoosterTest is Test {
         );
         vm.stopPrank();
 
-        (, uint256 posCollateral, uint256 posDebt, ) = vault.getPosition(
+        (, uint256 posCollateral, uint256 posDebt, , , ) = vault.getPosition(
             positionId
         );
         assertEq(posCollateral, collateralAmount - fee);
@@ -255,7 +256,7 @@ contract LeverageBoosterTest is Test {
             new bytes(0)
         );
 
-        (, uint256 posCollateral, uint256 posDebt, ) = vault.getPosition(
+        (, uint256 posCollateral, uint256 posDebt, , , ) = vault.getPosition(
             positionId
         );
         assertGt(posCollateral, collateralAmount); // Collateral increases from swaps
@@ -279,7 +280,7 @@ contract LeverageBoosterTest is Test {
             new bytes(0)
         );
 
-        (, uint256 posCollateral, uint256 posDebt, ) = vault.getPosition(
+        (, uint256 posCollateral, uint256 posDebt, , , ) = vault.getPosition(
             positionId
         );
         assertEq(posCollateral, collateralAmount - fee); // No additional collateral from swap

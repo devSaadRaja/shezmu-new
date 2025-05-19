@@ -8,6 +8,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {SoulBound} from "./SoulBound.sol";
 
 import {EERC20} from "./interfaces/EERC20.sol";
+import {IStrategy} from "./interfaces/IStrategy.sol";
 import {IPriceFeed} from "./interfaces/IPriceFeed.sol";
 import {IInterestCollector} from "./interfaces/IInterestCollector.sol";
 
@@ -24,12 +25,16 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         uint256 debtAmount;
         uint256 lastInterestCollectionBlock;
         uint256 effectiveLtvRatio;
+        bool interestOptOut;
     }
 
     SoulBound public soulBoundToken;
     uint256 public soulBoundFeePercent = 2;
     mapping(uint256 => bool) hasSoulBound; // Tracks if a position has a soul-bound token
     mapping(address => bool) doNotMint; // check if user has not allowed soulbound (deducting fee)
+
+    IStrategy public strategy;
+    mapping(address => bool) interestOptOut; // default interest accrual
 
     IERC20 public collateralToken;
     EERC20 public loanToken;
@@ -126,7 +131,8 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         uint256 _liquidatorReward,
         address _collateralPriceFeed,
         address _loanPriceFeed,
-        address _treasury
+        address _treasury,
+        address _strategy
     ) {
         if (_collateralToken == address(0)) revert InvalidCollateralToken();
         if (_loanToken == address(0)) revert InvalidLoanToken();
@@ -144,6 +150,7 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         collateralPriceFeed = IPriceFeed(_collateralPriceFeed);
         loanPriceFeed = IPriceFeed(_loanPriceFeed);
         treasury = _treasury;
+        strategy = IStrategy(_strategy);
 
         soulBoundToken = new SoulBound(address(this));
 
@@ -162,13 +169,19 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
     /// @return the block number for last interest collected
     function getPosition(
         uint256 positionId
-    ) external view returns (address, uint256, uint256, uint256) {
+    )
+        external
+        view
+        returns (address, uint256, uint256, uint256, uint256, bool)
+    {
         Position memory position = positions[positionId];
         return (
             position.owner,
             position.collateralAmount,
             position.debtAmount,
-            position.lastInterestCollectionBlock
+            position.lastInterestCollectionBlock,
+            position.effectiveLtvRatio,
+            position.interestOptOut
         );
     }
 
@@ -284,6 +297,11 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
     // ================== WRITE FUNCTIONS ================== //
     // ===================================================== //
 
+    /// @notice Sets if user want to opt in or out of interest deduction
+    function setInterestOptOut(bool val) external {
+        interestOptOut[msg.sender] = val;
+    }
+
     /// @notice Opens a new lending position
     /// @param collateral The address of the collateral token
     /// @param collateralAmount The amount of collateral to deposit
@@ -315,7 +333,8 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
             collateralAmount,
             debtAmount,
             block.number,
-            ltvRatio
+            ltvRatio,
+            interestOptOut[owner]
         );
         userPositionIds[owner].push(positionId);
 
@@ -361,6 +380,11 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         uint256 maxLoanValue = (collateralValue * pos.effectiveLtvRatio) / 100;
 
         if (loanValue > maxLoanValue) revert LoanExceedsLTVLimit();
+
+        if (address(strategy) != address(0) && pos.interestOptOut) {
+            collateralToken.approve(address(strategy), pos.collateralAmount);
+            strategy.deposit(positionId, pos.collateralAmount);
+        }
 
         emit PositionOpened(positionId, owner, collateralAmount, debtAmount);
     }
@@ -479,6 +503,13 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         positions[positionId].collateralAmount = newCollateralAmount;
         collateralBalances[msg.sender] -= amount;
 
+        if (
+            address(strategy) != address(0) &&
+            positions[positionId].interestOptOut
+        ) {
+            strategy.withdraw(positionId, amount);
+        }
+
         if (!collateralToken.transfer(msg.sender, amount)) {
             revert CollateralWithdrawalFailed();
         }
@@ -501,6 +532,7 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         address positionOwner = position.owner;
         uint256 collateralAmount = position.collateralAmount;
         uint256 debtAmount = position.debtAmount;
+        bool posInterestOptOut = position.interestOptOut;
 
         if (positionOwner == address(0)) revert InvalidPosition();
         if (!isLiquidatable(positionId)) revert PositionNotLiquidatable();
@@ -510,6 +542,10 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         uint256 reward = (collateralAmount * liquidatorReward) / 100;
         uint256 penalty = (collateralAmount * penaltyRate) / 100;
         uint256 remainingCollateral = collateralAmount - reward - penalty;
+
+        if (address(strategy) != address(0) && posInterestOptOut) {
+            strategy.withdraw(positionId, collateralAmount);
+        }
 
         if (!collateralToken.transfer(treasury, penalty)) {
             revert LiquidationFailed();
@@ -567,6 +603,13 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
             collateralBalances[positionOwner] -= collateralAmount;
             loanBalances[positionOwner] -= debtAmount;
             totalDebt -= debtAmount;
+
+            if (
+                address(strategy) != address(0) &&
+                positions[positionId].interestOptOut
+            ) {
+                strategy.withdraw(positionId, collateralAmount);
+            }
 
             if (remainingCollateral > 0) {
                 if (
@@ -694,6 +737,14 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         if (amount == 0) revert ZeroCollateralAmount();
         if (!collateralToken.transferFrom(account, address(this), amount)) {
             revert CollateralTransferFailed();
+        }
+
+        if (
+            address(strategy) != address(0) &&
+            positions[positionId].interestOptOut
+        ) {
+            collateralToken.approve(address(strategy), amount);
+            strategy.deposit(positionId, amount);
         }
 
         positions[positionId].collateralAmount += amount;
