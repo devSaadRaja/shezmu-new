@@ -51,7 +51,9 @@ interface IERC20Vault {
             address owner,
             uint256 collateralAmount,
             uint256 debtAmount,
-            uint256 lastInterestCollectionBlock
+            uint256 lastInterestCollectionBlock,
+            uint256 effectiveLtvRatio,
+            bool interestOptOut
         );
 
     function getCollateralBalance(address user) external view returns (uint256);

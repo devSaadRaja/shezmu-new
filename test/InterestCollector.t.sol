@@ -64,7 +64,8 @@ contract InterestCollectorTest is Test {
             LIQUIDATOR_REWARD,
             address(wethPriceFeed),
             address(shezUSDPriceFeed),
-            treasury
+            treasury,
+            address(0)
         );
         vault.setInterestCollector(address(interestCollector));
         vault.toggleInterestCollection(true);

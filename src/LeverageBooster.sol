@@ -125,7 +125,7 @@ contract LeverageBooster is Ownable, ReentrancyGuard {
         positionId = vault.nextPositionId() - 1;
 
         for (uint256 i = 0; i < leverage; i++) {
-            (, , uint256 currentDebt, ) = vault.getPosition(positionId);
+            (, , uint256 currentDebt, , , ) = vault.getPosition(positionId);
             uint256 maxBorrowable = vault.getMaxBorrowable(positionId);
 
             uint256 borrowAmount = maxBorrowable > currentDebt
