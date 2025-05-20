@@ -8,6 +8,8 @@ import {IPositionManager} from "./interfaces/IPositionManager.sol";
 import {IPoolManager} from "v4-core/src/interfaces/IPoolManager.sol";
 import {IUniversalRouter} from "../src/interfaces/IUniversalRouter.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
+import {IPool} from "../src/interfaces/aave-v3/IPool.sol";
+import {IRewardsController} from "../src/interfaces/aave-v3/IRewardsController.sol";
 
 import {EasyPosm} from "./utils/EasyPosm.sol";
 import {PoolKey} from "v4-core/src/types/PoolKey.sol";
@@ -21,6 +23,7 @@ import "../src/InterestCollector.sol";
 import "../src/mock/MockERC20.sol";
 import "../src/mock/MockERC20Mintable.sol";
 import "../src/mock/MockPriceFeed.sol";
+import "../src/strategies/AaveStrategy.sol";
 import {LeverageBooster} from "../src/LeverageBooster.sol";
 
 import "../src/interfaces/IPriceFeed.sol";
@@ -44,6 +47,9 @@ contract ERC20VaultInvariantTest is Test {
     //     IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3);
 
     //* ETHEREUM ADDRESSES *//
+    IPool POOL_V3 = IPool(0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2);
+    IRewardsController INCENTIVES_V3 =
+        IRewardsController(0x8164Cc65827dcFe994AB23944CBC90e0aa80bFcb);
     IUniversalRouter SWAP_ROUTER =
         IUniversalRouter(0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af);
     IPoolManager POOL_MANAGER =
@@ -53,12 +59,19 @@ contract ERC20VaultInvariantTest is Test {
     IAllowanceTransfer PERMIT2 =
         IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3);
 
+    // IERC20 WETH = IERC20(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2); // eth mainnet
+
+    IERC20 WETH = IERC20(0xdC035D45d973E3EC169d2276DDab16f1e407384F); // USDS (USDS Stablecoin)
+    IERC20 aToken = IERC20(0x32a6268f9Ba3642Dda7892aDd74f1D34469A4259); // aEthUSDS (Aave Ethereum USDS)
+    IERC20 rewardToken = IERC20(0x32a6268f9Ba3642Dda7892aDd74f1D34469A4259); // aEthUSDS (Aave Ethereum USDS)
+
     PoolKey pool;
     ERC20Vault vault;
     LeverageBooster leverageBooster;
-    IERC20 WETH;
+    // IERC20 WETH;
     // MockERC20 WETH;
     MockERC20Mintable shezUSD;
+    AaveStrategy aaveStrategy;
 
     // IPriceFeed wethPriceFeed;
     MockPriceFeed wethPriceFeed;
@@ -92,6 +105,7 @@ contract ERC20VaultInvariantTest is Test {
     uint256 public initialWETHBalance; // User1's initial WETH balance
     uint256 public totalPenaltiesAcrossAllTime; // Total penalties from liquidations
     uint256 public totalSoulBoundFees; // Total soul-bound fees paid to treasury
+    mapping(uint256 => bool) public interestOptOutAtPosition; // positionId => interestOptOut
 
     // =========================================== //
     // ================== SETUP ================== //
@@ -100,15 +114,25 @@ contract ERC20VaultInvariantTest is Test {
     function setUp() public {
         vm.startPrank(deployer);
 
-        WETH = IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48); // eth mainnet
+        // WETH = new MockERC20("Collateral Token", "COL");
+
         deal(address(WETH), deployer, 1_000_000_000 ether);
 
-        // WETH = new MockERC20("Collateral Token", "COL");
         shezUSD = new MockERC20Mintable("Shez USD", "shezUSD");
 
         // wethPriceFeed = IPriceFeed(0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419);
         wethPriceFeed = new MockPriceFeed(200 * 10 ** 8, 8); // $200
         shezUSDPriceFeed = new MockPriceFeed(100 * 10 ** 8, 8); // $100
+
+        aaveStrategy = new AaveStrategy();
+        aaveStrategy.initialize(
+            treasury,
+            address(WETH),
+            address(aToken),
+            address(rewardToken),
+            address(POOL_V3),
+            address(INCENTIVES_V3)
+        );
 
         vault = new ERC20Vault(
             address(WETH),
@@ -119,7 +143,7 @@ contract ERC20VaultInvariantTest is Test {
             address(wethPriceFeed),
             address(shezUSDPriceFeed),
             treasury,
-            address(0)
+            address(aaveStrategy)
         );
         interestCollector = new InterestCollector(treasury);
         leverageBooster = new LeverageBooster(
@@ -140,6 +164,13 @@ contract ERC20VaultInvariantTest is Test {
         shezUSD.grantRole(keccak256("MINTER_ROLE"), address(vault));
         shezUSD.grantRole(keccak256("BURNER_ROLE"), address(vault));
 
+        aaveStrategy.setVault(deployer);
+        WETH.approve(address(aaveStrategy), 1);
+        aaveStrategy.deposit(0, 1);
+        aaveStrategy.setUserUseReserveAsCollateral();
+
+        aaveStrategy.setVault(address(vault));
+
         vm.stopPrank();
 
         _poolAndLiquidity();
@@ -158,7 +189,7 @@ contract ERC20VaultInvariantTest is Test {
         // Specify the openPosition function as a target selector
         FuzzSelector memory selectorTest = FuzzSelector({
             addr: address(this),
-            selectors: new bytes4[](10)
+            selectors: new bytes4[](11)
         });
         selectorTest.selectors[0] = this.handler_openPosition.selector;
         selectorTest.selectors[1] = this.handler_addCollateral.selector;
@@ -170,6 +201,9 @@ contract ERC20VaultInvariantTest is Test {
         selectorTest.selectors[7] = this.handler_withdrawInterest.selector;
         selectorTest.selectors[8] = this.handler_leveragePosition.selector;
         selectorTest.selectors[9] = this.handler_borrow.selector;
+        selectorTest.selectors[10] = this
+            .handler_batchLiquidatePositions
+            .selector;
         targetSelector(selectorTest);
         // FuzzSelector memory selectorVault = FuzzSelector({
         //     addr: address(vault),
@@ -185,6 +219,7 @@ contract ERC20VaultInvariantTest is Test {
 
     function _collectInterest(uint256 positionId, uint256 debtAmount) internal {
         if (
+            // !interestOptOutAtPosition[positionId] &&
             address(vault.interestCollector()) != address(0) &&
             vault.interestCollectionEnabled()
         ) {
@@ -209,11 +244,14 @@ contract ERC20VaultInvariantTest is Test {
 
     function handler_openPosition(
         uint256 collateralAmount,
-        uint256 debtAmount
+        uint256 debtAmount,
+        bool interestOptOut
     ) public {
         vm.startPrank(user1);
         collateralAmount = bound(collateralAmount, 0, 1e24); // 0 to 1e24 (allow zero)
         debtAmount = bound(debtAmount, 0, 1e24); // 0 to 1e24 (allow zero)
+
+        // vault.setInterestOptOut(interestOptOut);
 
         WETH.approve(address(vault), collateralAmount);
 
@@ -251,6 +289,9 @@ contract ERC20VaultInvariantTest is Test {
             );
             uint256 loanValue = vault.getLoanValue(debtAmount);
             ltvAtCreation[positionId] = (loanValue * 100) / collateralValue;
+
+            // // Track interest opt-out status for this position
+            // interestOptOutAtPosition[positionId] = interestOptOut;
         } catch {}
         // }
         // // Test revert paths
@@ -512,6 +553,76 @@ contract ERC20VaultInvariantTest is Test {
                 vm.stopPrank();
             }
         }
+    }
+
+    function handler_batchLiquidatePositions(
+        uint256[] calldata positionIds
+    ) public {
+        uint256 nextId = vault.nextPositionId();
+        if (nextId <= 1) return; // No positions exist yet
+
+        // Prepare a list of valid, liquidatable position IDs
+        uint256[] memory validIds = new uint256[](positionIds.length);
+        uint256 validCount = 0;
+
+        for (uint256 i = 0; i < positionIds.length; i++) {
+            uint256 positionId = bound(positionIds[i], 1, nextId - 1);
+            (
+                address owner,
+                uint256 collateralAmount,
+                uint256 debtAmount,
+                ,
+                ,
+
+            ) = vault.getPosition(positionId);
+
+            // Only consider positions that are owned, liquidatable, and not already marked as liquidated
+            if (
+                owner != address(0) &&
+                vault.isLiquidatable(positionId) &&
+                WETH.balanceOf(address(vault)) >= collateralAmount &&
+                shezUSD.balanceOf(address(owner)) >= debtAmount &&
+                !wasLiquidated[positionId]
+            ) {
+                // Simulate interest collection
+                _collectInterest(positionId, debtAmount);
+
+                // Store pre-liquidation collateral
+                preLiquidationCollateral[positionId] = collateralAmount;
+
+                validIds[validCount] = positionId;
+                validCount++;
+            }
+        }
+
+        if (validCount == 0) return;
+
+        // Prepare the array to pass to batchLiquidate
+        uint256[] memory toLiquidate = new uint256[](validCount);
+        for (uint256 i = 0; i < validCount; i++) {
+            toLiquidate[i] = validIds[i];
+        }
+
+        vm.startPrank(user2);
+        try vault.batchLiquidate(toLiquidate) {
+            // Mark all as liquidated and record collateral returned
+            for (uint256 i = 0; i < validCount; i++) {
+                uint256 positionId = toLiquidate[i];
+                wasLiquidated[positionId] = true;
+
+                uint256 collateralAmount = preLiquidationCollateral[positionId];
+                uint256 reward = (collateralAmount * LIQUIDATOR_REWARD) / 100;
+                uint256 penalty = (collateralAmount * vault.penaltyRate()) /
+                    100;
+                uint256 remainingCollateral = collateralAmount -
+                    reward -
+                    penalty;
+
+                totalPenaltiesAcrossAllTime += penalty;
+                liquidatedCollateralReturned[positionId] = remainingCollateral;
+            }
+        } catch {}
+        vm.stopPrank();
     }
 
     function handler_collectInterest(
