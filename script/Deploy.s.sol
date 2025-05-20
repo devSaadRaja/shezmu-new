@@ -283,7 +283,7 @@ contract DeployScript is Script {
     }
 
     function deployStrategy() external {
-        address user = 0xC02aB1A5eaA8d1B114EF786D9bde108cD4364359;
+        // address user = 0xC02aB1A5eaA8d1B114EF786D9bde108cD4364359;
         // string[] memory inputs = new string[](3);
         // inputs[0] = "cast";
         // inputs[1] = "rpc";

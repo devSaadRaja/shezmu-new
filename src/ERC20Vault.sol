@@ -435,14 +435,6 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
 
         totalDebt -= debtAmount;
 
-        // If no collateral or debt remains, burn the soul-bound token and clean up
-        if (
-            positions[positionId].debtAmount == 0 &&
-            positions[positionId].collateralAmount == 0
-        ) {
-            _deletePosition(positionId, positions[positionId].owner);
-        }
-
         emit DebtRepaid(positionId, debtAmount);
     }
 
@@ -671,6 +663,14 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
     // ===================================================== //
     // ================== OWNER FUNCTIONS ================== //
     // ===================================================== //
+
+    /// @notice Sets strategy
+    /// @param _strategy address of new strategy
+    function setStrategy(
+        address _strategy
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        strategy = IStrategy(_strategy);
+    }
 
     /// @notice Updates the price feed addresses for both collateral and loan tokens
     /// @param _collateralFeed The new collateral price feed address

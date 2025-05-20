@@ -8,6 +8,8 @@ interface IERC20Vault {
         uint256 collateralAmount;
         uint256 debtAmount;
         uint256 lastInterestCollectionBlock;
+        uint256 effectiveLtvRatio;
+        bool interestOptOut;
     }
 
     // ============ State Variables ============ //
