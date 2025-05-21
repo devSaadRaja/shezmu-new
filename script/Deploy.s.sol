@@ -283,13 +283,6 @@ contract DeployScript is Script {
     }
 
     function deployStrategy() external {
-        // address user = 0xC02aB1A5eaA8d1B114EF786D9bde108cD4364359;
-        // string[] memory inputs = new string[](3);
-        // inputs[0] = "cast";
-        // inputs[1] = "rpc";
-        // inputs[2] = string(abi.encodePacked("anvil_impersonateAccount", user));
-        // vm.ffi(inputs);
-
         // ! MAINNET ADDRESSES
 
         IPool POOL_V3 = IPool(0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2);
@@ -303,45 +296,7 @@ contract DeployScript is Script {
         IERC20 aToken = IERC20(0x32a6268f9Ba3642Dda7892aDd74f1D34469A4259); // aEthUSDS (Aave Ethereum USDS)
         IERC20 rewardToken = IERC20(0x32a6268f9Ba3642Dda7892aDd74f1D34469A4259); // aEthUSDS (Aave Ethereum USDS)
 
-        // vm.startBroadcast(); // Start with the default signer
-        // vm.allowCheatcodes(address(this)); // Important for some setups
-
-        // // Make the RPC call to impersonate the account
-        // bytes memory result = vm.ffi(
-        //     [
-        //         "curl",
-        //         "-s",
-        //         "-X",
-        //         "POST",
-        //         "http://127.0.0.1:8545", // Your anvil URL
-        //         "-H",
-        //         "Content-Type: application/json",
-        //         "--data",
-        //         string(
-        //             abi.encodePacked(
-        //                 '{"jsonrpc":"2.0","method":"anvil_impersonateAccount","params":["',
-        //                 vm.toString(0xC02aB1A5eaA8d1B114EF786D9bde108cD4364359),
-        //                 '"],"id":1}'
-        //             )
-        //         )
-        //     ]
-        // );
-
-        // vm.stopBroadcast();
-
-        // vm.broadcast(user);
-        // vm.prank(user);
-        // vm.startPrank(user);
-        // vm.startBroadcast(user);
-        // collateralToken.transfer(deployer, 1000 ether);
-        // // vm.stopPrank();
-        // vm.stopBroadcast();
-        // console.log(collateralToken.balanceOf(deployer), "<<< BALANCE");
-
-        // vm.startBroadcast();
-        // deal(address(collateralToken), deployer, 1000 ether);
         console.log(collateralToken.balanceOf(deployer), "<<< BALANCE");
-        // vm.stopBroadcast();
 
         vm.startBroadcast(privateKeyDeployer);
 
@@ -360,8 +315,8 @@ contract DeployScript is Script {
 
         aaveStrategy.setVault(deployer);
 
-        collateralToken.approve(address(aaveStrategy), 1 ether);
-        aaveStrategy.deposit(0, 1 ether);
+        collateralToken.approve(address(aaveStrategy), 1000 ether);
+        aaveStrategy.deposit(0, 1000 ether);
 
         aaveStrategy.setUserUseReserveAsCollateral();
 
