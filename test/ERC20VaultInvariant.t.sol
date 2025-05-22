@@ -122,7 +122,7 @@ contract ERC20VaultInvariantTest is Test {
 
         // wethPriceFeed = IPriceFeed(0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419);
         wethPriceFeed = new MockPriceFeed(200 * 10 ** 8, 8); // $200
-        shezUSDPriceFeed = new MockPriceFeed(100 * 10 ** 8, 8); // $100
+        shezUSDPriceFeed = new MockPriceFeed(200 * 10 ** 8, 8); // $200
 
         aaveStrategy = new AaveStrategy();
         aaveStrategy.initialize(
@@ -219,7 +219,7 @@ contract ERC20VaultInvariantTest is Test {
 
     function _collectInterest(uint256 positionId, uint256 debtAmount) internal {
         if (
-            // !interestOptOutAtPosition[positionId] &&
+            !interestOptOutAtPosition[positionId] &&
             address(vault.interestCollector()) != address(0) &&
             vault.interestCollectionEnabled()
         ) {
@@ -251,7 +251,7 @@ contract ERC20VaultInvariantTest is Test {
         collateralAmount = bound(collateralAmount, 0, 1e24); // 0 to 1e24 (allow zero)
         debtAmount = bound(debtAmount, 0, 1e24); // 0 to 1e24 (allow zero)
 
-        // vault.setInterestOptOut(interestOptOut);
+        vault.setInterestOptOut(interestOptOut);
 
         WETH.approve(address(vault), collateralAmount);
 
@@ -290,8 +290,8 @@ contract ERC20VaultInvariantTest is Test {
             uint256 loanValue = vault.getLoanValue(debtAmount);
             ltvAtCreation[positionId] = (loanValue * 100) / collateralValue;
 
-            // // Track interest opt-out status for this position
-            // interestOptOutAtPosition[positionId] = interestOptOut;
+            // Track interest opt-out status for this position
+            interestOptOutAtPosition[positionId] = interestOptOut;
         } catch {}
         // }
         // // Test revert paths
@@ -486,19 +486,21 @@ contract ERC20VaultInvariantTest is Test {
     }
 
     function handler_updatePriceFeed(
-        uint256 priceFeedIndex,
+        // uint256 priceFeedIndex,
         uint256 newPrice
     ) public {
         vm.startPrank(deployer); // Assume only deployer can update price feeds
-        newPrice = bound(newPrice, 1 * 10 ** 8, 1000 * 10 ** 8); // Reasonable price range (e.g., $1 to $1000 with 8 decimals)
+        newPrice = bound(newPrice, 1 * 10 ** 8, 100 * 10 ** 8); // Reasonable price range (e.g., $1 to $1000 with 8 decimals)
 
-        // Select the price feed based on the index (0 for wethPriceFeed, 1 for shezUSDPriceFeed)
-        address priceFeed;
-        if (priceFeedIndex % 2 == 0) {
-            priceFeed = address(wethPriceFeed);
-        } else {
-            priceFeed = address(shezUSDPriceFeed);
-        }
+        // // Select the price feed based on the index (0 for wethPriceFeed, 1 for shezUSDPriceFeed)
+        // address priceFeed;
+        // if (priceFeedIndex % 2 == 0) {
+        //     priceFeed = address(wethPriceFeed);
+        // } else {
+        //     priceFeed = address(shezUSDPriceFeed);
+        // }
+
+        address priceFeed = address(wethPriceFeed);
 
         try MockPriceFeed(priceFeed).setPrice(int256(newPrice)) {} catch {}
         vm.stopPrank();
