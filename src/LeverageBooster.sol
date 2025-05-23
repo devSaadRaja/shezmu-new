@@ -15,6 +15,11 @@ import {Actions} from "v4-periphery/src/libraries/Actions.sol";
 import {PoolKey} from "v4-periphery/lib/v4-core/src/types/PoolKey.sol";
 import {Currency} from "v4-periphery/lib/v4-core/src/types/Currency.sol";
 
+/**
+ * @title LeverageBooster
+ * @notice Enables users to open leveraged positions in a vault by looping borrow and swap operations.
+ * @dev Integrates with Uniswap v4 Universal Router and Permit2 for token swaps and approvals.
+ */
 contract LeverageBooster is Ownable, ReentrancyGuard {
     // =============================================== //
     // ================== STRUCTURE ================== //
@@ -70,9 +75,9 @@ contract LeverageBooster is Ownable, ReentrancyGuard {
         swapRouter = IUniversalRouter(_swapRouter);
     }
 
-    // ===================================================== //
-    // ================== WRITE FUNCTIONS ================== //
-    // ===================================================== //
+    // ======================================================== //
+    // ================== EXTERNAL FUNCTIONS ================== //
+    // ======================================================== //
 
     /**
      * @notice Sets a PoolKey for a given token pair to be used in swaps.

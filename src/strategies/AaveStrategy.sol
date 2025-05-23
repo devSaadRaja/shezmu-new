@@ -10,6 +10,9 @@ import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol
 import {IPool} from "../interfaces/aave-v3/IPool.sol";
 import {IRewardsController} from "../interfaces/aave-v3/IRewardsController.sol";
 
+/// @title AaveStrategy
+/// @notice Strategy contract for depositing collateral into Aave and managing rewards for a vault.
+/// @dev Only the vault can deposit/withdraw. Owner can claim rewards and manage protocol addresses.
 contract AaveStrategy is
     Initializable,
     OwnableUpgradeable,
@@ -97,38 +100,9 @@ contract AaveStrategy is
         rewardsController = IRewardsController(_rewardController);
     }
 
-    // ==================================================== //
-    // ================== VIEW FUNCTIONS ================== //
-    // ==================================================== //
-
-    /// @notice Retrieves the accumulated rewards
-    /// @return uint256 Amount of accumulated rewards
-    function getAccumulatedRewards() public view returns (uint256) {
-        return (
-            rewardsController.getUserAccruedRewards(
-                address(this),
-                address(rewardToken)
-            )
-        );
-    }
-
-    /// @notice Gets the current rewards balance
-    /// @return uint256 Amount of current rewards
-    function getUserRewards() public view returns (uint256) {
-        address[] memory assets = new address[](1);
-        assets[0] = address(aToken);
-        return (
-            rewardsController.getUserRewards(
-                assets,
-                address(this),
-                address(rewardToken)
-            )
-        );
-    }
-
-    // ===================================================== //
-    // ================== WRITE FUNCTIONS ================== //
-    // ===================================================== //
+    // ======================================================== //
+    // ================== EXTERNAL FUNCTIONS ================== //
+    // ======================================================== //
 
     /// @notice Deposits collateral into the vault and forwards it to the specified protocol
     /// @param positionId Unique identifier for the position
@@ -167,10 +141,6 @@ contract AaveStrategy is
 
         emit Withdraw(positionId, amount);
     }
-
-    // ===================================================== //
-    // ================== OWNER FUNCTIONS ================== //
-    // ===================================================== //
 
     /// @notice Claims all interest accrued and redeposit collateral to aave
     function claimAndRedeposit() external onlyOwner {
@@ -251,5 +221,34 @@ contract AaveStrategy is
     /// @notice Sets no use for reserves as collateral
     function setUserUseReserveAsCollateral() external onlyOwner {
         pool.setUserUseReserveAsCollateral(address(collateralToken), false);
+    }
+
+    // ====================================================== //
+    // ================== PUBLIC FUNCTIONS ================== //
+    // ====================================================== //
+
+    /// @notice Retrieves the accumulated rewards
+    /// @return uint256 Amount of accumulated rewards
+    function getAccumulatedRewards() public view returns (uint256) {
+        return (
+            rewardsController.getUserAccruedRewards(
+                address(this),
+                address(rewardToken)
+            )
+        );
+    }
+
+    /// @notice Gets the current rewards balance
+    /// @return uint256 Amount of current rewards
+    function getUserRewards() public view returns (uint256) {
+        address[] memory assets = new address[](1);
+        assets[0] = address(aToken);
+        return (
+            rewardsController.getUserRewards(
+                assets,
+                address(this),
+                address(rewardToken)
+            )
+        );
     }
 }

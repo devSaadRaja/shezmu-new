@@ -12,12 +12,13 @@ import {IStrategy} from "./interfaces/IStrategy.sol";
 import {IPriceFeed} from "./interfaces/IPriceFeed.sol";
 import {IInterestCollector} from "./interfaces/IInterestCollector.sol";
 
+/// @title ERC20Vault
+/// @notice A lending vault contract for ERC20 tokens with support for leverage, interest collection, and soul-bound tokens.
+/// @dev Inherits from ReentrancyGuard and AccessControl. Manages positions, collateral, debt, and integrates with external strategies and price feeds.
 contract ERC20Vault is ReentrancyGuard, AccessControl {
     // =============================================== //
     // ================== STRUCTURE ================== //
     // =============================================== //
-
-    bytes32 public constant LEVERAGE_ROLE = keccak256("LEVERAGE_ROLE");
 
     struct Position {
         address owner;
@@ -27,6 +28,9 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         uint256 effectiveLtvRatio;
         bool interestOptOut;
     }
+
+    bytes32 public constant LEVERAGE_ROLE = keccak256("LEVERAGE_ROLE");
+    uint256 public constant PRECISION = 1e18; // For precise calculations
 
     SoulBound public soulBoundToken;
     uint256 public soulBoundFeePercent = 2;
@@ -42,8 +46,6 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
     uint256 public liquidationThreshold; // % of LTV ratio as liquidation threshold
     uint256 public liquidatorReward; // 50 for 50%
     uint256 public penaltyRate = 10; // 10 for 10%
-
-    uint256 public constant PRECISION = 1e18; // For precise calculations
 
     IPriceFeed public collateralPriceFeed;
     IPriceFeed public loanPriceFeed;
@@ -123,6 +125,7 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
     // ================================================= //
     // ================== CONSTRUCTOR ================== //
     // ================================================= //
+
     constructor(
         address _collateralToken,
         address _loanToken,
@@ -157,145 +160,15 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
 
-    // ==================================================== //
-    // ================== READ FUNCTIONS ================== //
-    // ==================================================== //
+    // ======================================================== //
+    // ================== EXTERNAL FUNCTIONS ================== //
+    // ======================================================== //
 
-    /// @notice Returns the position details for a given position ID
-    /// @param positionId The ID of the position to query
-    /// @return owner The address of the position owner
-    /// @return collateralAmount The amount of collateral in the position
-    /// @return debtAmount The amount of debt in the position
-    /// @return the block number for last interest collected
-    function getPosition(
-        uint256 positionId
-    )
-        external
-        view
-        returns (address, uint256, uint256, uint256, uint256, bool)
-    {
-        Position memory position = positions[positionId];
-        return (
-            position.owner,
-            position.collateralAmount,
-            position.debtAmount,
-            position.lastInterestCollectionBlock,
-            position.effectiveLtvRatio,
-            position.interestOptOut
-        );
+    /// @notice Allows users to opt out of soul-bound token minting
+    /// @param status The status to set for doNotMint (true = opt out, false = opt in)
+    function setDoNotMint(bool status) external {
+        doNotMint[msg.sender] = status;
     }
-
-    /// @notice Gets the total collateral balance for a user across all positions
-    /// @param user The address of the user to query
-    /// @return The total collateral balance
-    function getCollateralBalance(
-        address user
-    ) external view returns (uint256) {
-        return collateralBalances[user];
-    }
-
-    /// @notice Gets the total loan balance for a user across all positions
-    /// @param user The address of the user to query
-    /// @return The total loan balance
-    function getLoanBalance(address user) external view returns (uint256) {
-        return loanBalances[user];
-    }
-
-    /// @notice Calculates the health factor of a position
-    /// @param positionId The ID of the position to check
-    /// @return The health factor (collateral value / debt value) * PRECISION
-    function getPositionHealth(
-        uint256 positionId
-    ) public view returns (uint256) {
-        Position memory pos = positions[positionId];
-        if (pos.debtAmount == 0) return type(uint256).max;
-
-        uint256 collateralValue = getCollateralValue(pos.collateralAmount);
-        uint256 debtValue = getLoanValue(pos.debtAmount);
-        return (collateralValue * PRECISION) / debtValue;
-    }
-
-    /// @notice Calculates the maximum amount a user can borrow based on their total collateral
-    /// @param positionId The positionId to check max loan amount
-    /// @return The maximum borrowable amount in loan tokens
-    function getMaxBorrowable(
-        uint256 positionId
-    ) external view returns (uint256) {
-        uint256 effectiveLtv = positions[positionId].effectiveLtvRatio;
-        uint256 collateralValue = getCollateralValue(
-            positions[positionId].collateralAmount
-        );
-        uint256 maxLoanValue = (collateralValue * effectiveLtv) / 100;
-        uint256 loanPrice = _getPrice(loanPriceFeed);
-        return (maxLoanValue * PRECISION) / loanPrice;
-    }
-
-    /// @notice Gets all position IDs owned by a user
-    /// @param user The address of the user to query
-    /// @return An array of position IDs
-    function getUserPositionIds(
-        address user
-    ) external view returns (uint256[] memory) {
-        return userPositionIds[user];
-    }
-
-    /// @notice Calculates the USD value of a given amount of collateral
-    /// @param collateralAmount The amount of collateral tokens
-    /// @return The USD value of the collateral
-    function getCollateralValue(
-        uint256 collateralAmount
-    ) public view returns (uint256) {
-        uint256 collateralPrice = _getPrice(collateralPriceFeed);
-        return (collateralAmount * collateralPrice) / PRECISION;
-    }
-
-    /// @notice Calculates the USD value of a given loan amount
-    /// @param loanAmount The amount of loan tokens
-    /// @return The USD value of the loan
-    function getLoanValue(uint256 loanAmount) public view returns (uint256) {
-        uint256 loanPrice = _getPrice(loanPriceFeed);
-        return (loanAmount * loanPrice) / PRECISION;
-    }
-
-    /// @notice Checks if a position is liquidatable
-    /// @param positionId The ID of the position to check
-    /// @return bool True if the position is liquidatable
-    function isLiquidatable(uint256 positionId) public view returns (bool) {
-        Position memory pos = positions[positionId];
-        if (pos.debtAmount == 0 || pos.collateralAmount == 0) return false;
-
-        uint256 health = getPositionHealth(positionId);
-        uint256 liquidationThresholdValue = (pos.effectiveLtvRatio *
-            liquidationThreshold) / 100;
-        return health < ((PRECISION * liquidationThresholdValue) / 100);
-    }
-
-    /// @notice Checks if a position has a soul-bound token
-    /// @param positionId The ID of the position to check
-    /// @return True if the position has a soul-bound token, false otherwise
-    function getHasSoulBound(uint256 positionId) external view returns (bool) {
-        return hasSoulBound[positionId];
-    }
-
-    /// @notice Checks if a user has opted out of soul-bound token minting
-    /// @param user The address of the user to check
-    /// @return True if the user has opted out, false otherwise
-    function getDoNotMint(address user) external view returns (bool) {
-        return doNotMint[user];
-    }
-
-    /// @notice Returns the effective LTV ratio for a given position
-    /// @param positionId The ID of the position to query
-    /// @return The effective LTV ratio of the position
-    function getEffectiveLtvRatio(
-        uint256 positionId
-    ) external view returns (uint256) {
-        return positions[positionId].effectiveLtvRatio;
-    }
-
-    // ===================================================== //
-    // ================== WRITE FUNCTIONS ================== //
-    // ===================================================== //
 
     /// @notice Sets if user want to opt in or out of interest deduction
     function setInterestOptOut(bool val) external {
@@ -654,16 +527,6 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         emit InterestCollected(interestAmount);
     }
 
-    /// @notice Allows users to opt out of soul-bound token minting
-    /// @param status The status to set for doNotMint (true = opt out, false = opt in)
-    function setDoNotMint(bool status) external {
-        doNotMint[msg.sender] = status;
-    }
-
-    // ===================================================== //
-    // ================== OWNER FUNCTIONS ================== //
-    // ===================================================== //
-
     /// @notice Sets strategy
     /// @param _strategy address of new strategy
     function setStrategy(
@@ -721,6 +584,142 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
     ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         interestCollectionEnabled = _enabled;
         emit InterestCollectionToggled(_enabled);
+    }
+
+    /// @notice Returns the position details for a given position ID
+    /// @param positionId The ID of the position to query
+    /// @return owner The address of the position owner
+    /// @return collateralAmount The amount of collateral in the position
+    /// @return debtAmount The amount of debt in the position
+    /// @return the block number for last interest collected
+    function getPosition(
+        uint256 positionId
+    )
+        external
+        view
+        returns (address, uint256, uint256, uint256, uint256, bool)
+    {
+        Position memory position = positions[positionId];
+        return (
+            position.owner,
+            position.collateralAmount,
+            position.debtAmount,
+            position.lastInterestCollectionBlock,
+            position.effectiveLtvRatio,
+            position.interestOptOut
+        );
+    }
+
+    /// @notice Gets the total collateral balance for a user across all positions
+    /// @param user The address of the user to query
+    /// @return The total collateral balance
+    function getCollateralBalance(
+        address user
+    ) external view returns (uint256) {
+        return collateralBalances[user];
+    }
+
+    /// @notice Gets the total loan balance for a user across all positions
+    /// @param user The address of the user to query
+    /// @return The total loan balance
+    function getLoanBalance(address user) external view returns (uint256) {
+        return loanBalances[user];
+    }
+
+    /// @notice Calculates the maximum amount a user can borrow based on their total collateral
+    /// @param positionId The positionId to check max loan amount
+    /// @return The maximum borrowable amount in loan tokens
+    function getMaxBorrowable(
+        uint256 positionId
+    ) external view returns (uint256) {
+        uint256 effectiveLtv = positions[positionId].effectiveLtvRatio;
+        uint256 collateralValue = getCollateralValue(
+            positions[positionId].collateralAmount
+        );
+        uint256 maxLoanValue = (collateralValue * effectiveLtv) / 100;
+        uint256 loanPrice = _getPrice(loanPriceFeed);
+        return (maxLoanValue * PRECISION) / loanPrice;
+    }
+
+    /// @notice Gets all position IDs owned by a user
+    /// @param user The address of the user to query
+    /// @return An array of position IDs
+    function getUserPositionIds(
+        address user
+    ) external view returns (uint256[] memory) {
+        return userPositionIds[user];
+    }
+
+    /// @notice Checks if a position has a soul-bound token
+    /// @param positionId The ID of the position to check
+    /// @return True if the position has a soul-bound token, false otherwise
+    function getHasSoulBound(uint256 positionId) external view returns (bool) {
+        return hasSoulBound[positionId];
+    }
+
+    /// @notice Checks if a user has opted out of soul-bound token minting
+    /// @param user The address of the user to check
+    /// @return True if the user has opted out, false otherwise
+    function getDoNotMint(address user) external view returns (bool) {
+        return doNotMint[user];
+    }
+
+    /// @notice Returns the effective LTV ratio for a given position
+    /// @param positionId The ID of the position to query
+    /// @return The effective LTV ratio of the position
+    function getEffectiveLtvRatio(
+        uint256 positionId
+    ) external view returns (uint256) {
+        return positions[positionId].effectiveLtvRatio;
+    }
+
+    // ====================================================== //
+    // ================== PUBLIC FUNCTIONS ================== //
+    // ====================================================== //
+
+    /// @notice Calculates the health factor of a position
+    /// @param positionId The ID of the position to check
+    /// @return The health factor (collateral value / debt value) * PRECISION
+    function getPositionHealth(
+        uint256 positionId
+    ) public view returns (uint256) {
+        Position memory pos = positions[positionId];
+        if (pos.debtAmount == 0) return type(uint256).max;
+
+        uint256 collateralValue = getCollateralValue(pos.collateralAmount);
+        uint256 debtValue = getLoanValue(pos.debtAmount);
+        return (collateralValue * PRECISION) / debtValue;
+    }
+
+    /// @notice Calculates the USD value of a given amount of collateral
+    /// @param collateralAmount The amount of collateral tokens
+    /// @return The USD value of the collateral
+    function getCollateralValue(
+        uint256 collateralAmount
+    ) public view returns (uint256) {
+        uint256 collateralPrice = _getPrice(collateralPriceFeed);
+        return (collateralAmount * collateralPrice) / PRECISION;
+    }
+
+    /// @notice Calculates the USD value of a given loan amount
+    /// @param loanAmount The amount of loan tokens
+    /// @return The USD value of the loan
+    function getLoanValue(uint256 loanAmount) public view returns (uint256) {
+        uint256 loanPrice = _getPrice(loanPriceFeed);
+        return (loanAmount * loanPrice) / PRECISION;
+    }
+
+    /// @notice Checks if a position is liquidatable
+    /// @param positionId The ID of the position to check
+    /// @return bool True if the position is liquidatable
+    function isLiquidatable(uint256 positionId) public view returns (bool) {
+        Position memory pos = positions[positionId];
+        if (pos.debtAmount == 0 || pos.collateralAmount == 0) return false;
+
+        uint256 health = getPositionHealth(positionId);
+        uint256 liquidationThresholdValue = (pos.effectiveLtvRatio *
+            liquidationThreshold) / 100;
+        return health < ((PRECISION * liquidationThresholdValue) / 100);
     }
 
     // ======================================================== //
@@ -804,15 +803,6 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         emit PositionDeleted(positionId);
     }
 
-    /// @notice Internal function to get the latest price from a price feed
-    /// @param priceFeed The price feed to query
-    /// @return The normalized price with 18 decimals
-    function _getPrice(IPriceFeed priceFeed) internal view returns (uint256) {
-        (, int256 price, , , ) = priceFeed.latestRoundData();
-        if (price <= 0) revert InvalidPrice();
-        return uint256(price) * 10 ** (18 - priceFeed.decimals());
-    }
-
     /// @notice Internal function to collect interest if conditions are met
     /// @param positionId The ID of the position to collect interest
     function _collectInterestIfAvailable(uint256 positionId) internal {
@@ -834,5 +824,14 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         {} catch {
             // Continue execution even if interest collection fails
         }
+    }
+
+    /// @notice Internal function to get the latest price from a price feed
+    /// @param priceFeed The price feed to query
+    /// @return The normalized price with 18 decimals
+    function _getPrice(IPriceFeed priceFeed) internal view returns (uint256) {
+        (, int256 price, , , ) = priceFeed.latestRoundData();
+        if (price <= 0) revert InvalidPrice();
+        return uint256(price) * 10 ** (18 - priceFeed.decimals());
     }
 }
