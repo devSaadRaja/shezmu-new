@@ -7,7 +7,7 @@ interface IInterestCollector {
         address token,
         uint256 positionId,
         uint256 debtAmount
-    ) external;
+    ) external returns (uint256);
 
     function calculateInterestDue(
         address vault,

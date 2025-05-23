@@ -508,22 +508,10 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
     /// @notice Mint interest amount to InterestCollector
     /// @dev Can only be called by InterestCollector
     /// @param positionId The ID of the position to collect interest from
-    /// @param interestAmount The interest amount to be collected
     function collectInterest(
-        uint256 positionId,
-        uint256 interestAmount
-    ) external {
-        require(msg.sender == address(interestCollector));
-
-        loanToken.mint(address(interestCollector), interestAmount);
-
-        totalDebt += interestAmount;
-
-        Position storage pos = positions[positionId];
-        pos.debtAmount += interestAmount;
-        loanBalances[pos.owner] += interestAmount;
-        pos.lastInterestCollectionBlock = block.number;
-
+        uint256 positionId
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        uint256 interestAmount = _collectInterestIfAvailable(positionId);
         emit InterestCollected(interestAmount);
     }
 
@@ -805,14 +793,16 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
 
     /// @notice Internal function to collect interest if conditions are met
     /// @param positionId The ID of the position to collect interest
-    function _collectInterestIfAvailable(uint256 positionId) internal {
+    function _collectInterestIfAvailable(
+        uint256 positionId
+    ) internal returns (uint256) {
         if (
             address(interestCollector) == address(0) ||
             !interestCollectionEnabled
-        ) return;
+        ) return 0;
 
         Position memory pos = positions[positionId];
-        if (pos.debtAmount == 0) return;
+        if (pos.debtAmount == 0) return 0;
 
         try
             interestCollector.collectInterest(
@@ -821,8 +811,17 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
                 positionId,
                 pos.debtAmount
             )
-        {} catch {
-            // Continue execution even if interest collection fails
+        returns (uint256 interestAmount) {
+            loanToken.mint(address(interestCollector), interestAmount);
+
+            totalDebt += interestAmount;
+
+            pos.debtAmount += interestAmount;
+            loanBalances[pos.owner] += interestAmount;
+
+            return interestAmount;
+        } catch {
+            return 0;
         }
     }
 

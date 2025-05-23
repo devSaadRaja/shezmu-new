@@ -341,13 +341,8 @@ contract InterestCollectorTest is Test {
 
         assertEq(shezUSD.balanceOf(treasury), 0);
 
-        vm.prank(address(vault));
-        interestCollector.collectInterest(
-            address(vault),
-            address(shezUSD),
-            1,
-            500 ether
-        );
+        vm.prank(deployer);
+        vault.collectInterest(1);
 
         uint256 due = interestCollector.getCollectedInterest(address(shezUSD));
 

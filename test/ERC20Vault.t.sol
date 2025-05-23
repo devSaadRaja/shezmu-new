@@ -1612,13 +1612,8 @@ contract ERC20VaultTest is Test {
         shezUSD.approve(address(vault), interestDue);
 
         // Collect interest
-        vm.prank(address(vault));
-        interestCollector.collectInterest(
-            address(vault),
-            address(shezUSD),
-            1,
-            500 ether
-        );
+        vm.prank(deployer);
+        vault.collectInterest(1);
 
         // Verify collected interest
         assertEq(
@@ -1871,10 +1866,13 @@ contract ERC20VaultTest is Test {
         assertEq(debt, debtAmount, "Debt should remain");
     }
 
-    function test_CollectIInterestNotInterestCollector() public {
-        vm.prank(user1);
-        vm.expectRevert();
-        vault.collectInterest(1, 500 ether);
+    function test_CollectIInterestInterestCollectorAddressZero() public {
+        vm.startPrank(deployer);
+        vault.setInterestCollector(address(0));
+        vm.expectEmit();
+        emit ERC20Vault.InterestCollected(0);
+        vault.collectInterest(1);
+        vm.stopPrank();
     }
 
     function test_CalculateInterestDueUnregisteredVault() public view {

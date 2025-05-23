@@ -5,8 +5,6 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-import {IERC20Vault} from "./interfaces/IERC20Vault.sol";
-
 /**
  * @title InterestCollector
  * @notice Collects interest from lending vaults using a perpetual decay model
@@ -91,10 +89,10 @@ contract InterestCollector is ReentrancyGuard, Ownable {
         address token,
         uint256 positionId,
         uint256 debtAmount
-    ) external nonReentrant {
+    ) external nonReentrant returns (uint256) {
         if (vaultInterestRates[vault] == 0) revert VaultNotRegistered();
         if (msg.sender != vault) revert VaultNotCaller();
-        if (!isCollectionReady(vault, positionId)) return;
+        if (!isCollectionReady(vault, positionId)) return 0;
 
         uint256 interestDue = calculateInterestDue(
             vault,
@@ -104,12 +102,12 @@ contract InterestCollector is ReentrancyGuard, Ownable {
 
         if (interestDue == 0) revert NoInterestToCollect();
 
-        IERC20Vault(vault).collectInterest(positionId, interestDue);
-
         lastCollectionBlock[vault][positionId] = block.number;
         collectedInterest[token] += interestDue;
 
         emit InterestCollected(vault, token, interestDue);
+
+        return interestDue;
     }
 
     /**
