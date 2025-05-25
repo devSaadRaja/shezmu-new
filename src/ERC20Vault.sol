@@ -27,6 +27,7 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         uint256 lastInterestCollectionBlock;
         uint256 effectiveLtvRatio;
         bool interestOptOut;
+        uint256 leverage;
     }
 
     bytes32 public constant LEVERAGE_ROLE = keccak256("LEVERAGE_ROLE");
@@ -183,7 +184,8 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         address owner,
         address collateral,
         uint256 collateralAmount,
-        uint256 debtAmount
+        uint256 debtAmount,
+        uint256 leverage
     ) external nonReentrant {
         if (collateral != address(collateralToken)) {
             revert InvalidCollateralToken();
@@ -207,7 +209,8 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
             debtAmount,
             block.number,
             ltvRatio,
-            interestOptOut[owner]
+            interestOptOut[owner],
+            leverage
         );
         userPositionIds[owner].push(positionId);
 
@@ -585,7 +588,7 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
     )
         external
         view
-        returns (address, uint256, uint256, uint256, uint256, bool)
+        returns (address, uint256, uint256, uint256, uint256, bool, uint256)
     {
         Position memory position = positions[positionId];
         return (
@@ -594,7 +597,8 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
             position.debtAmount,
             position.lastInterestCollectionBlock,
             position.effectiveLtvRatio,
-            position.interestOptOut
+            position.interestOptOut,
+            position.leverage
         );
     }
 
@@ -705,7 +709,9 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         if (pos.debtAmount == 0 || pos.collateralAmount == 0) return false;
 
         uint256 health = getPositionHealth(positionId);
-        uint256 threshold = (PRECISION * liquidationThreshold) / 100;
+        uint256 adjustedThreshold = liquidationThreshold + (pos.leverage * 5); // Increase threshold by 5% per leverage level
+        uint256 threshold = (PRECISION * adjustedThreshold) / 100;
+
         return health < threshold;
     }
 

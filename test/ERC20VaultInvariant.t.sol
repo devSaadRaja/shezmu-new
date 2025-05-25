@@ -267,7 +267,8 @@ contract ERC20VaultInvariantTest is Test {
                 user1,
                 address(WETH),
                 collateralAmount,
-                debtAmount
+                debtAmount,
+                0
             )
         {
             uint256 positionId = vault.nextPositionId() - 1;
@@ -324,7 +325,7 @@ contract ERC20VaultInvariantTest is Test {
         if (nextId > 1) {
             positionId = bound(positionId, 1, nextId - 1);
 
-            (address owner, , , , , ) = vault.getPosition(positionId);
+            (address owner, , , , , , ) = vault.getPosition(positionId);
             if (owner != user1) {
                 vm.stopPrank();
                 return;
@@ -378,6 +379,7 @@ contract ERC20VaultInvariantTest is Test {
                 address owner,
                 uint256 posCollateral,
                 uint256 posDebt,
+                ,
                 ,
                 ,
 
@@ -442,7 +444,7 @@ contract ERC20VaultInvariantTest is Test {
         uint256 nextId = vault.nextPositionId();
         if (nextId > 1) {
             positionId = bound(positionId, 1, nextId - 1);
-            (address owner, , uint256 posDebt, , , ) = vault.getPosition(
+            (address owner, , uint256 posDebt, , , , ) = vault.getPosition(
                 positionId
             );
 
@@ -517,6 +519,7 @@ contract ERC20VaultInvariantTest is Test {
                 uint256 debtAmount,
                 ,
                 ,
+                ,
 
             ) = vault.getPosition(positionId);
 
@@ -573,6 +576,7 @@ contract ERC20VaultInvariantTest is Test {
                 address owner,
                 uint256 collateralAmount,
                 uint256 debtAmount,
+                ,
                 ,
                 ,
 
@@ -637,7 +641,7 @@ contract ERC20VaultInvariantTest is Test {
         uint256 nextId = vault.nextPositionId();
         if (nextId > 1) {
             positionId = bound(positionId, 1, nextId - 1);
-            (, , uint256 debtAmount, , , ) = vault.getPosition(positionId);
+            (, , uint256 debtAmount, , , , ) = vault.getPosition(positionId);
 
             // uint256 interestDue = interestCollector.calculateInterestDue(
             //     address(vault),
@@ -653,7 +657,7 @@ contract ERC20VaultInvariantTest is Test {
                     debtAmount
                 )
             {
-                (, , uint256 debtAfter, , , ) = vault.getPosition(positionId);
+                (, , uint256 debtAfter, , , , ) = vault.getPosition(positionId);
                 uint256 interestApplied = debtAfter - debtAmount;
                 interestAccrued[positionId] += interestApplied;
 
@@ -703,7 +707,7 @@ contract ERC20VaultInvariantTest is Test {
                 new bytes(0)
             )
         returns (uint256 positionId) {
-            (, , uint256 posDebt, , , ) = vault.getPosition(positionId);
+            (, , uint256 posDebt, , , , ) = vault.getPosition(positionId);
 
             // Adjust collateral amount for soul-bound fee if applicable
             uint256 adjustedCollateral = collateralAmount;
@@ -728,7 +732,7 @@ contract ERC20VaultInvariantTest is Test {
         if (nextId <= 1) return; // No positions exist yet
 
         positionId = bound(positionId, 1, nextId - 1);
-        (address owner, uint256 posCollateral, uint256 posDebt, , , ) = vault
+        (address owner, uint256 posCollateral, uint256 posDebt, , , , ) = vault
             .getPosition(positionId);
 
         // Skip if position doesn't exist or has been liquidated
@@ -763,7 +767,7 @@ contract ERC20VaultInvariantTest is Test {
         uint256 totalCollateral;
         uint256 totalDebt;
         for (uint256 i = 0; i < posIds.length; i++) {
-            (, uint256 posCollateral, uint256 posDebt, , , ) = vault
+            (, uint256 posCollateral, uint256 posDebt, , , , ) = vault
                 .getPosition(posIds[i]);
             totalCollateral += posCollateral;
             totalDebt += posDebt;
@@ -776,7 +780,7 @@ contract ERC20VaultInvariantTest is Test {
         uint256[] memory posIds = vault.getUserPositionIds(user1);
         for (uint256 i = 0; i < posIds.length; i++) {
             uint256 positionId = posIds[i];
-            (, , uint256 debtAmount, , , ) = vault.getPosition(positionId);
+            (, , uint256 debtAmount, , , , ) = vault.getPosition(positionId);
             if (debtAmount > 0) {
                 // Check LTV at the time of position creation
                 uint256 effectiveLtv = vault.getEffectiveLtvRatio(positionId);
@@ -796,7 +800,7 @@ contract ERC20VaultInvariantTest is Test {
 
         for (uint256 i = 0; i < posIds.length; i++) {
             uint256 positionId = posIds[i];
-            (, uint256 posCollateral, , , , ) = vault.getPosition(positionId);
+            (, uint256 posCollateral, , , , , ) = vault.getPosition(positionId);
             uint256 expectedCollateral = initialCollateral[positionId] +
                 addedCollateral[positionId] -
                 withdrawnCollateral[positionId];
@@ -823,7 +827,7 @@ contract ERC20VaultInvariantTest is Test {
 
         for (uint256 i = 0; i < posIds.length; i++) {
             uint256 positionId = posIds[i];
-            (, uint256 posCollateral, , , , ) = vault.getPosition(positionId);
+            (, uint256 posCollateral, , , , , ) = vault.getPosition(positionId);
             totalCollateralInVault += posCollateral;
             totalWithdrawn += withdrawnCollateral[positionId];
         }
@@ -870,7 +874,7 @@ contract ERC20VaultInvariantTest is Test {
 
         for (uint256 i = 0; i < posIds.length; i++) {
             uint256 positionId = posIds[i];
-            (, , uint256 posDebt, , , ) = vault.getPosition(positionId);
+            (, , uint256 posDebt, , , , ) = vault.getPosition(positionId);
             uint256 expectedDebt = (initialDebt[positionId] +
                 interestAccrued[positionId]) - repaidDebt[positionId];
             assertEq(posDebt, expectedDebt, "Position debt mismatch");
@@ -898,7 +902,7 @@ contract ERC20VaultInvariantTest is Test {
         uint256[] memory posIds = vault.getUserPositionIds(user1);
         for (uint256 i = 0; i < posIds.length; i++) {
             uint256 positionId = posIds[i];
-            (, uint256 collateralAmount, uint256 debtAmount, , , ) = vault
+            (, uint256 collateralAmount, uint256 debtAmount, , , , ) = vault
                 .getPosition(positionId);
             uint256 health = vault.getPositionHealth(positionId);
 
@@ -936,7 +940,7 @@ contract ERC20VaultInvariantTest is Test {
         uint256[] memory posIds = vault.getUserPositionIds(user1);
         for (uint256 i = 0; i < posIds.length; i++) {
             uint256 positionId = posIds[i];
-            (, uint256 collateralAmount, uint256 debtAmount, , , ) = vault
+            (, uint256 collateralAmount, uint256 debtAmount, , , , ) = vault
                 .getPosition(positionId);
             if (collateralAmount > 0 && debtAmount > 0) {
                 uint256 health = vault.getPositionHealth(positionId);
@@ -968,7 +972,7 @@ contract ERC20VaultInvariantTest is Test {
         uint256[] memory posIds = vault.getUserPositionIds(user1);
         for (uint256 i = 0; i < posIds.length; i++) {
             uint256 positionId = posIds[i];
-            (, uint256 posCollateral, uint256 posDebt, , , ) = vault
+            (, uint256 posCollateral, uint256 posDebt, , , , ) = vault
                 .getPosition(positionId);
 
             // Check if the debt has been fully repaid
@@ -1031,21 +1035,25 @@ contract ERC20VaultInvariantTest is Test {
 
         for (uint256 i = 0; i < posIds.length; i++) {
             uint256 positionId = posIds[i];
-            (, uint256 collateralAmount, uint256 debtAmount, , , ) = vault
-                .getPosition(positionId);
+            (
+                ,
+                uint256 collateralAmount,
+                uint256 debtAmount,
+                ,
+                ,
+                ,
+                uint256 leverage
+            ) = vault.getPosition(positionId);
 
             if (debtAmount > 0 && collateralAmount > 0) {
                 uint256 health = vault.getPositionHealth(positionId);
                 bool liquidatable = vault.isLiquidatable(positionId);
 
-                // Calculate expected liquidation threshold
-                uint256 effectiveLtv = vault.getEffectiveLtvRatio(positionId);
-                uint256 liquidationThresholdValue = (effectiveLtv *
-                    vault.liquidationThreshold()) / 100;
-                uint256 requiredHealth = (vault.PRECISION() *
-                    liquidationThresholdValue) / 100;
+                uint256 adjustedThreshold = LIQUIDATION_THRESHOLD +
+                    (leverage * 5);
+                uint256 threshold = (1e18 * adjustedThreshold) / 100;
 
-                if (health >= requiredHealth) {
+                if (health >= threshold) {
                     assertFalse(
                         liquidatable,
                         "Position should NOT be liquidatable but is!"
@@ -1068,6 +1076,7 @@ contract ERC20VaultInvariantTest is Test {
                     address owner,
                     uint256 collateralAmount,
                     uint256 debtAmount,
+                    ,
                     ,
                     ,
 
@@ -1126,7 +1135,7 @@ contract ERC20VaultInvariantTest is Test {
 
         for (uint256 i = 0; i < activePosIds.length; i++) {
             uint256 positionId = activePosIds[i];
-            (, uint256 posCollateral, uint256 posDebt, , , ) = vault
+            (, uint256 posCollateral, uint256 posDebt, , , , ) = vault
                 .getPosition(positionId);
             totalCollateralInVault += posCollateral;
             totalDebtInVault += posDebt;
@@ -1152,7 +1161,7 @@ contract ERC20VaultInvariantTest is Test {
         // Verify each position's debt matches expected debt (including interest)
         for (uint256 i = 0; i < posIds.length; i++) {
             uint256 positionId = posIds[i];
-            (, , uint256 posDebt, , , ) = vault.getPosition(positionId);
+            (, , uint256 posDebt, , , , ) = vault.getPosition(positionId);
             uint256 expectedDebt = (initialDebt[positionId] +
                 interestAccrued[positionId]) - repaidDebt[positionId];
             assertEq(
@@ -1181,7 +1190,7 @@ contract ERC20VaultInvariantTest is Test {
         // Verify that interest isn't double-counted by checking lastCollection
         for (uint256 i = 0; i < posIds.length; i++) {
             uint256 positionId = posIds[i];
-            (, , uint256 debtAmount, , , ) = vault.getPosition(positionId);
+            (, , uint256 debtAmount, , , , ) = vault.getPosition(positionId);
             if (debtAmount > 0) {
                 uint256 lastCollectionBlock = interestCollector
                     .getLastCollectionBlock(address(vault), positionId);
@@ -1207,19 +1216,26 @@ contract ERC20VaultInvariantTest is Test {
         uint256[] memory posIds = vault.getUserPositionIds(user1);
         for (uint256 i = 0; i < posIds.length; i++) {
             uint256 positionId = posIds[i];
-            (, uint256 posCollateral, uint256 posDebt, , , ) = vault
-                .getPosition(positionId);
+            (
+                ,
+                uint256 posCollateral,
+                uint256 posDebt,
+                ,
+                ,
+                ,
+                uint256 leverage
+            ) = vault.getPosition(positionId);
 
             if (posCollateral > 0 && posDebt > 0) {
                 // Only check active positions
                 bool liquidatable = vault.isLiquidatable(positionId);
                 uint256 health = vault.getPositionHealth(positionId);
-                uint256 effectiveLtv = vault.getEffectiveLtvRatio(positionId);
-                uint256 minHealth = (effectiveLtv * LIQUIDATION_THRESHOLD) /
-                    100;
-                minHealth = (vault.PRECISION() * minHealth) / 100;
 
-                if (health >= minHealth) {
+                uint256 adjustedThreshold = LIQUIDATION_THRESHOLD +
+                    (leverage * 5);
+                uint256 threshold = (1e18 * adjustedThreshold) / 100;
+
+                if (health >= threshold) {
                     assertFalse(
                         liquidatable,
                         "Position should NOT be liquidatable but is!"

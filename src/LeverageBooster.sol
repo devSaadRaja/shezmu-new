@@ -125,12 +125,13 @@ contract LeverageBooster is Ownable, ReentrancyGuard {
             msg.sender,
             address(collateralToken),
             collateralAmount,
-            0
+            0,
+            leverage
         );
         positionId = vault.nextPositionId() - 1;
 
         for (uint256 i = 0; i < leverage; i++) {
-            (, , uint256 currentDebt, , , ) = vault.getPosition(positionId);
+            (, , uint256 currentDebt, , , ,) = vault.getPosition(positionId);
             uint256 maxBorrowable = vault.getMaxBorrowable(positionId);
 
             uint256 borrowAmount = maxBorrowable > currentDebt

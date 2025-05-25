@@ -144,11 +144,19 @@ contract ERC20VaultTest is Test {
         uint256 debtAmount = (collateralAmount * INITIAL_LTV) / 100; // % LTV
 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
 
         assertEq(vault.getCollateralBalance(user1), collateralAmount);
         assertEq(vault.getLoanBalance(user1), debtAmount);
-        (, uint256 posCollateral, uint256 posDebt, , , ) = vault.getPosition(1);
+        (, uint256 posCollateral, uint256 posDebt, , , , ) = vault.getPosition(
+            1
+        );
         assertEq(posCollateral, collateralAmount);
         assertEq(posDebt, debtAmount);
         assertEq(shezUSD.balanceOf(user1), debtAmount);
@@ -164,13 +172,21 @@ contract ERC20VaultTest is Test {
         uint256 debtAmount = (collateralAmount * INITIAL_LTV) / 100; // % LTV
 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
 
         uint256 fee = (collateralAmount * MINT_FEE) / 100; // 2% fee
 
         assertEq(vault.getCollateralBalance(user1), collateralAmount - fee);
         assertEq(vault.getLoanBalance(user1), debtAmount);
-        (, uint256 posCollateral, uint256 posDebt, , , ) = vault.getPosition(1);
+        (, uint256 posCollateral, uint256 posDebt, , , , ) = vault.getPosition(
+            1
+        );
         assertEq(posCollateral, collateralAmount - fee);
         assertEq(posDebt, debtAmount);
         assertEq(shezUSD.balanceOf(user1), debtAmount);
@@ -194,7 +210,13 @@ contract ERC20VaultTest is Test {
 
         WETH.approve(address(vault), collateralAmount);
         vm.expectRevert(ERC20Vault.LoanExceedsLTVLimit.selector);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
 
         vm.stopPrank();
     }
@@ -209,10 +231,16 @@ contract ERC20VaultTest is Test {
         uint256 additionalAmount = 200 ether;
 
         WETH.approve(address(vault), collateralAmount + additionalAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
         vault.addCollateral(1, additionalAmount);
 
-        (, uint256 posCollateral, , , , ) = vault.getPosition(1);
+        (, uint256 posCollateral, , , , , ) = vault.getPosition(1);
         assertEq(posCollateral, collateralAmount + additionalAmount);
         assertEq(
             vault.getCollateralBalance(user1),
@@ -231,12 +259,18 @@ contract ERC20VaultTest is Test {
         uint256 additionalAmount = 200 ether;
 
         WETH.approve(address(vault), collateralAmount + additionalAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
         vault.addCollateral(1, additionalAmount);
 
         uint256 fee = (collateralAmount * MINT_FEE) / 100;
 
-        (, uint256 posCollateral, , , , ) = vault.getPosition(1);
+        (, uint256 posCollateral, , , , , ) = vault.getPosition(1);
         assertEq(posCollateral, collateralAmount + additionalAmount - fee);
         assertEq(
             vault.getCollateralBalance(user1),
@@ -257,10 +291,16 @@ contract ERC20VaultTest is Test {
         uint256 withdrawAmount = 200 ether;
 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
         vault.withdrawCollateral(1, withdrawAmount);
 
-        (, uint256 posCollateral, , , , ) = vault.getPosition(1);
+        (, uint256 posCollateral, , , , , ) = vault.getPosition(1);
         assertEq(posCollateral, collateralAmount - withdrawAmount);
         assertEq(
             WETH.balanceOf(user1),
@@ -279,12 +319,18 @@ contract ERC20VaultTest is Test {
         uint256 withdrawAmount = 200 ether;
 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
 
         uint256 fee = (collateralAmount * MINT_FEE) / 100; // 2% fee
         vault.withdrawCollateral(1, withdrawAmount);
 
-        (, uint256 posCollateral, , , , ) = vault.getPosition(1);
+        (, uint256 posCollateral, , , , , ) = vault.getPosition(1);
         assertEq(posCollateral, collateralAmount - withdrawAmount - fee);
         assertEq(
             WETH.balanceOf(user1),
@@ -304,7 +350,13 @@ contract ERC20VaultTest is Test {
         uint256 debtAmount = (collateralAmount * INITIAL_LTV) / 100;
 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
 
         vm.expectRevert(
             ERC20Vault.InsufficientCollateralAfterWithdrawal.selector
@@ -322,7 +374,13 @@ contract ERC20VaultTest is Test {
         uint256 debtAmount = (collateralAmount * INITIAL_LTV) / 100;
 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
 
         uint256 fee = (collateralAmount * MINT_FEE) / 100; // 2% fee
 
@@ -343,11 +401,17 @@ contract ERC20VaultTest is Test {
         uint256 repayAmount = 300 ether;
 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
         shezUSD.approve(address(vault), repayAmount);
         vault.repayDebt(1, repayAmount);
 
-        (, , uint256 posDebt, , , ) = vault.getPosition(1);
+        (, , uint256 posDebt, , , , ) = vault.getPosition(1);
         assertEq(posDebt, debtAmount - repayAmount);
         assertEq(vault.getLoanBalance(user1), debtAmount - repayAmount);
 
@@ -363,7 +427,13 @@ contract ERC20VaultTest is Test {
         uint256 debtAmount = (collateralAmount * INITIAL_LTV) / 100;
 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
 
         uint256 health = vault.getPositionHealth(1);
         uint256 healthEq = (vault.getCollateralValue(collateralAmount) *
@@ -383,7 +453,13 @@ contract ERC20VaultTest is Test {
         uint256 debtAmount = (collateralAmount * INITIAL_LTV) / 100;
 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
 
         uint256 fee = (collateralAmount * MINT_FEE) / 100;
         uint256 health = vault.getPositionHealth(1);
@@ -409,11 +485,11 @@ contract ERC20VaultTest is Test {
         uint256 debt2 = 250 ether;
 
         WETH.approve(address(vault), collateral1 + collateral2);
-        vault.openPosition(user1, address(WETH), collateral1, debt1);
-        vault.openPosition(user1, address(WETH), collateral2, debt2);
+        vault.openPosition(user1, address(WETH), collateral1, debt1, 0);
+        vault.openPosition(user1, address(WETH), collateral2, debt2, 0);
 
-        (, uint256 posCollateral1, , , , ) = vault.getPosition(1);
-        (, uint256 posCollateral2, , , , ) = vault.getPosition(2);
+        (, uint256 posCollateral1, , , , , ) = vault.getPosition(1);
+        (, uint256 posCollateral2, , , , , ) = vault.getPosition(2);
         assertEq(posCollateral1, collateral1);
         assertEq(posCollateral2, collateral2);
         assertEq(vault.getCollateralBalance(user1), collateral1 + collateral2);
@@ -434,11 +510,11 @@ contract ERC20VaultTest is Test {
         uint256 fee2 = (collateral2 * MINT_FEE) / 100;
 
         WETH.approve(address(vault), collateral1 + collateral2);
-        vault.openPosition(user1, address(WETH), collateral1, debt1);
-        vault.openPosition(user1, address(WETH), collateral2, debt2);
+        vault.openPosition(user1, address(WETH), collateral1, debt1, 0);
+        vault.openPosition(user1, address(WETH), collateral2, debt2, 0);
 
-        (, uint256 posCollateral1, , , , ) = vault.getPosition(1);
-        (, uint256 posCollateral2, , , , ) = vault.getPosition(2);
+        (, uint256 posCollateral1, , , , , ) = vault.getPosition(1);
+        (, uint256 posCollateral2, , , , , ) = vault.getPosition(2);
         assertEq(posCollateral1, collateral1 - fee1);
         assertEq(posCollateral2, collateral2 - fee2);
         assertEq(
@@ -461,9 +537,11 @@ contract ERC20VaultTest is Test {
         uint256 tinyDebt = 5;
 
         WETH.approve(address(vault), tinyCollateral);
-        vault.openPosition(user1, address(WETH), tinyCollateral, tinyDebt);
+        vault.openPosition(user1, address(WETH), tinyCollateral, tinyDebt, 0);
 
-        (, uint256 posCollateral, uint256 posDebt, , , ) = vault.getPosition(1);
+        (, uint256 posCollateral, uint256 posDebt, , , , ) = vault.getPosition(
+            1
+        );
         assertEq(posCollateral, tinyCollateral);
         assertEq(posDebt, tinyDebt);
         assertEq(WETH.balanceOf(treasury), 0);
@@ -478,10 +556,12 @@ contract ERC20VaultTest is Test {
         uint256 tinyDebt = 500;
 
         WETH.approve(address(vault), tinyCollateral);
-        vault.openPosition(user1, address(WETH), tinyCollateral, tinyDebt);
+        vault.openPosition(user1, address(WETH), tinyCollateral, tinyDebt, 0);
 
         uint256 fee = (tinyCollateral * MINT_FEE) / 100;
-        (, uint256 posCollateral, uint256 posDebt, , , ) = vault.getPosition(1);
+        (, uint256 posCollateral, uint256 posDebt, , , , ) = vault.getPosition(
+            1
+        );
         assertEq(posCollateral, tinyCollateral - fee);
         assertEq(posDebt, tinyDebt);
         assertEq(WETH.balanceOf(treasury), fee);
@@ -496,9 +576,9 @@ contract ERC20VaultTest is Test {
         WETH.approve(address(vault), 1000 ether);
 
         vm.expectRevert(ERC20Vault.ZeroCollateralAmount.selector);
-        vault.openPosition(user1, address(WETH), 0, 500 ether);
+        vault.openPosition(user1, address(WETH), 0, 500 ether, 0);
 
-        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether, 0);
         vm.expectRevert(ERC20Vault.ZeroCollateralAmount.selector);
         vault.withdrawCollateral(1, 0);
 
@@ -516,7 +596,13 @@ contract ERC20VaultTest is Test {
         uint256 collateralAmount = 1000 ether;
         uint256 debtAmount = (collateralAmount * INITIAL_LTV) / 100;
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
 
         wethPriceFeed.setPrice(100 * 10 ** 8); // Drop to $100
         uint256 health = vault.getPositionHealth(1);
@@ -539,7 +625,13 @@ contract ERC20VaultTest is Test {
         uint256 collateralAmount = 1000 ether;
         uint256 debtAmount = (collateralAmount * INITIAL_LTV) / 100;
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
 
         uint256 fee = (collateralAmount * MINT_FEE) / 100;
         wethPriceFeed.setPrice(100 * 10 ** 8); // Drop to $100
@@ -564,7 +656,7 @@ contract ERC20VaultTest is Test {
         wethPriceFeed.setPrice(0);
         WETH.approve(address(vault), 1000 ether);
         vm.expectRevert(ERC20Vault.InvalidPrice.selector);
-        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether, 0);
 
         vm.stopPrank();
     }
@@ -575,7 +667,7 @@ contract ERC20VaultTest is Test {
         wethPriceFeed.setPrice(-1 * 10 ** 8);
         WETH.approve(address(vault), 1000 ether);
         vm.expectRevert(ERC20Vault.InvalidPrice.selector);
-        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether, 0);
 
         vm.stopPrank();
     }
@@ -584,21 +676,21 @@ contract ERC20VaultTest is Test {
         vm.startPrank(user1);
         vault.setDoNotMint(true);
         WETH.approve(address(vault), 2000 ether);
-        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
-        vault.openPosition(user1, address(WETH), 500 ether, 250 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether, 0);
+        vault.openPosition(user1, address(WETH), 500 ether, 250 ether, 0);
         vm.stopPrank();
 
         vm.startPrank(user2);
         vault.setDoNotMint(true);
         WETH.approve(address(vault), 3000 ether);
-        vault.openPosition(user2, address(WETH), 1500 ether, 750 ether);
-        vault.openPosition(user2, address(WETH), 750 ether, 375 ether);
+        vault.openPosition(user2, address(WETH), 1500 ether, 750 ether, 0);
+        vault.openPosition(user2, address(WETH), 750 ether, 375 ether, 0);
         vm.stopPrank();
 
-        (address pos1Owner, , , , , ) = vault.getPosition(1);
-        (address pos2Owner, , , , , ) = vault.getPosition(2);
-        (address pos3Owner, , , , , ) = vault.getPosition(3);
-        (address pos4Owner, , , , , ) = vault.getPosition(4);
+        (address pos1Owner, , , , , , ) = vault.getPosition(1);
+        (address pos2Owner, , , , , , ) = vault.getPosition(2);
+        (address pos3Owner, , , , , , ) = vault.getPosition(3);
+        (address pos4Owner, , , , , , ) = vault.getPosition(4);
         assertEq(pos1Owner, user1);
         assertEq(pos2Owner, user1);
         assertEq(pos3Owner, user2);
@@ -611,14 +703,14 @@ contract ERC20VaultTest is Test {
     function test_MultipleUsersMultiplePositionsSoulbound() public {
         vm.startPrank(user1);
         WETH.approve(address(vault), 2000 ether);
-        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
-        vault.openPosition(user1, address(WETH), 500 ether, 250 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether, 0);
+        vault.openPosition(user1, address(WETH), 500 ether, 250 ether, 0);
         vm.stopPrank();
 
         vm.startPrank(user2);
         WETH.approve(address(vault), 3000 ether);
-        vault.openPosition(user2, address(WETH), 1500 ether, 750 ether);
-        vault.openPosition(user2, address(WETH), 750 ether, 375 ether);
+        vault.openPosition(user2, address(WETH), 1500 ether, 750 ether, 0);
+        vault.openPosition(user2, address(WETH), 750 ether, 375 ether, 0);
         vm.stopPrank();
 
         uint256 totalFees = ((1000 ether + 500 ether + 1500 ether + 750 ether) *
@@ -644,18 +736,24 @@ contract ERC20VaultTest is Test {
         uint256 debtAmount = 500 ether;
 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
 
         shezUSD.approve(address(vault), debtAmount);
         vault.repayDebt(1, debtAmount);
 
-        (, , uint256 posDebt, , , ) = vault.getPosition(1);
+        (, , uint256 posDebt, , , , ) = vault.getPosition(1);
         assertEq(posDebt, 0);
         assertEq(vault.getLoanBalance(user1), 0);
         assertEq(vault.getPositionHealth(1), type(uint256).max);
 
         vault.withdrawCollateral(1, collateralAmount);
-        (, uint256 posCollateral, , , , ) = vault.getPosition(1);
+        (, uint256 posCollateral, , , , , ) = vault.getPosition(1);
         assertEq(posCollateral, 0);
 
         vm.stopPrank();
@@ -670,18 +768,24 @@ contract ERC20VaultTest is Test {
         uint256 fees = (1000 ether * MINT_FEE) / 100;
 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
 
         shezUSD.approve(address(vault), debtAmount);
         vault.repayDebt(1, debtAmount);
 
-        (, , uint256 posDebt, , , ) = vault.getPosition(1);
+        (, , uint256 posDebt, , , , ) = vault.getPosition(1);
         assertEq(posDebt, 0);
         assertEq(vault.getLoanBalance(user1), 0);
         assertEq(vault.getPositionHealth(1), type(uint256).max);
 
         vault.withdrawCollateral(1, collateralAmount - fees);
-        (, uint256 posCollateral, , , , ) = vault.getPosition(1);
+        (, uint256 posCollateral, , , , , ) = vault.getPosition(1);
         assertEq(posCollateral, 0);
 
         vm.stopPrank();
@@ -690,7 +794,7 @@ contract ERC20VaultTest is Test {
     function test_UnauthorizedPositionAccess() public {
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
-        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether, 0);
         vm.stopPrank();
 
         vm.startPrank(user2);
@@ -707,7 +811,7 @@ contract ERC20VaultTest is Test {
         WETH.approve(address(vault), 1000 ether);
 
         vm.expectRevert(ERC20Vault.InvalidCollateralToken.selector);
-        vault.openPosition(user1, address(shezUSD), 1000 ether, 500 ether);
+        vault.openPosition(user1, address(shezUSD), 1000 ether, 500 ether, 0);
 
         vm.stopPrank();
     }
@@ -721,12 +825,18 @@ contract ERC20VaultTest is Test {
 
         WETH.approve(address(vault), 2000 ether);
 
-        vault.openPosition(user1, address(WETH), collateralAmount, 1);
+        vault.openPosition(user1, address(WETH), collateralAmount, 1, 0);
         uint256 healthSmallDebt = vault.getPositionHealth(1);
         assertGt(healthSmallDebt, 1000 ether);
 
         uint256 debtAmount = (collateralAmount * INITIAL_LTV) / 100; // % LTV
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
 
         uint256 healthEq = (vault.getCollateralValue(collateralAmount) *
             vault.PRECISION()) / vault.getLoanValue(debtAmount);
@@ -742,7 +852,7 @@ contract ERC20VaultTest is Test {
 
         uint256 collateralAmount = 1000 ether;
 
-        vault.openPosition(user1, address(WETH), collateralAmount, 1);
+        vault.openPosition(user1, address(WETH), collateralAmount, 1, 0);
 
         uint256 fee1 = (collateralAmount * MINT_FEE) / 100;
         uint256 healthSmallDebt = vault.getPositionHealth(1);
@@ -751,7 +861,13 @@ contract ERC20VaultTest is Test {
 
         uint256 debtAmount = (collateralAmount * INITIAL_LTV) / 100; // % LTV
 
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
 
         uint256 fee2 = (collateralAmount * MINT_FEE) / 100;
         uint256 healthEq = (vault.getCollateralValue(collateralAmount - fee2) *
@@ -772,7 +888,13 @@ contract ERC20VaultTest is Test {
         uint256 collateralAmount = 1000 ether;
         uint256 debtAmount = (collateralAmount * INITIAL_LTV) / 100; // % LTV
 
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
         uint256 initialHealth = vault.getPositionHealth(1);
         vault.addCollateral(1, 200 ether);
         uint256 newHealth = vault.getPositionHealth(1);
@@ -790,7 +912,13 @@ contract ERC20VaultTest is Test {
         uint256 collateralAmount = 1000 ether;
         uint256 debtAmount = (collateralAmount * INITIAL_LTV) / 100; // % LTV
 
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
         uint256 initialFee = (collateralAmount * MINT_FEE) / 100;
         uint256 initialHealth = vault.getPositionHealth(1);
         uint256 healthEq = (vault.getCollateralValue(
@@ -817,7 +945,13 @@ contract ERC20VaultTest is Test {
         uint256 debtAmount = (collateralAmount * INITIAL_LTV) / 100; // % LTV
 
         WETH.approve(address(vault), 1000 ether);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
 
         uint256 healthEq = (vault.getCollateralValue(collateralAmount) *
             vault.PRECISION()) / vault.getLoanValue(debtAmount);
@@ -842,7 +976,13 @@ contract ERC20VaultTest is Test {
         uint256 debtAmount = (collateralAmount * INITIAL_LTV) / 100; // % LTV
 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
 
         uint256 fee = (collateralAmount * MINT_FEE) / 100;
 
@@ -867,8 +1007,8 @@ contract ERC20VaultTest is Test {
         vm.startPrank(user1);
         WETH.approve(address(vault), 2000 ether);
 
-        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
-        vault.openPosition(user1, address(WETH), 500 ether, 250 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether, 0);
+        vault.openPosition(user1, address(WETH), 500 ether, 250 ether, 0);
 
         uint256[] memory positionIds = vault.getUserPositionIds(user1);
         assertEq(positionIds.length, 2);
@@ -961,7 +1101,13 @@ contract ERC20VaultTest is Test {
         uint256 collateralAmount = 1000 ether;
         uint256 debtAmount = 500 ether;
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
         vm.mockCall(
             address(WETH),
             abi.encodeWithSelector(WETH.transfer.selector),
@@ -977,7 +1123,13 @@ contract ERC20VaultTest is Test {
         uint256 collateralAmount = 1000 ether;
         uint256 debtAmount = 500 ether;
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
         vm.expectRevert(ERC20Vault.ZeroCollateralAmount.selector);
         vault.addCollateral(1, 0);
         vm.stopPrank();
@@ -1058,7 +1210,13 @@ contract ERC20VaultTest is Test {
         uint256 withdrawAmount = 2000 ether; // More than deposited
 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
         vm.expectRevert(ERC20Vault.InsufficientCollateral.selector);
         vault.withdrawCollateral(1, withdrawAmount);
         vm.stopPrank();
@@ -1070,7 +1228,13 @@ contract ERC20VaultTest is Test {
         uint256 debtAmount = 500 ether;
         uint256 repayAmount = 300 ether;
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
         vm.stopPrank();
 
         vm.startPrank(deployer);
@@ -1125,7 +1289,13 @@ contract ERC20VaultTest is Test {
             abi.encode(false)
         );
         vm.expectRevert(ERC20Vault.CollateralTransferFailed.selector);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
         vm.stopPrank();
     }
 
@@ -1136,7 +1306,13 @@ contract ERC20VaultTest is Test {
         uint256 repayAmount = 600 ether; // Exceeds the debt amount
 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
 
         vm.expectRevert(ERC20Vault.AmountExceedsLoan.selector);
         vault.repayDebt(1, repayAmount);
@@ -1151,7 +1327,13 @@ contract ERC20VaultTest is Test {
 
         // Open a position to get a valid positionId
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, initialDebt);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            initialDebt,
+            0
+        );
 
         // Approve the vault for the additional amount
         WETH.approve(address(vault), addAmount);
@@ -1198,7 +1380,7 @@ contract ERC20VaultTest is Test {
     function test_NotLiquidatable() public {
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
-        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether, 0);
         vm.stopPrank();
 
         // Health = 4e18, threshold = 5.5e17
@@ -1217,7 +1399,13 @@ contract ERC20VaultTest is Test {
         uint256 actualCollateral = collateralAmount - fee;
 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, 500 ether);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            500 ether,
+            0
+        );
         vm.stopPrank();
 
         uint256 positionId = vault.nextPositionId() - 1;
@@ -1234,7 +1422,7 @@ contract ERC20VaultTest is Test {
         vault.liquidatePosition(positionId);
 
         // Check position state
-        (, uint256 collateral, uint256 debt, , , ) = vault.getPosition(
+        (, uint256 collateral, uint256 debt, , , , ) = vault.getPosition(
             positionId
         );
         assertEq(collateral, 0, "Collateral should be 0 after liquidation");
@@ -1279,7 +1467,13 @@ contract ERC20VaultTest is Test {
         uint256 actualCollateral = collateralAmount - fee;
 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
         vm.stopPrank();
 
         uint256 positionId = vault.nextPositionId() - 1;
@@ -1304,7 +1498,7 @@ contract ERC20VaultTest is Test {
         vault.liquidatePosition(positionId);
 
         // Verify position unchanged
-        (, uint256 collateral, uint256 debt, , , ) = vault.getPosition(
+        (, uint256 collateral, uint256 debt, , , , ) = vault.getPosition(
             positionId
         );
         assertEq(collateral, actualCollateral, "Collateral should remain");
@@ -1316,7 +1510,13 @@ contract ERC20VaultTest is Test {
         uint256 collateralAmount = 1000 ether;
         uint256 debtAmount = 500 ether;
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
         shezUSD.approve(address(vault), debtAmount);
         vault.repayDebt(1, debtAmount); // Repay all debt
         vm.stopPrank();
@@ -1338,7 +1538,13 @@ contract ERC20VaultTest is Test {
         uint256 collateralAmount = 1000 ether;
         uint256 debtAmount = 500 ether;
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
         vm.stopPrank();
 
         uint256 positionId = vault.nextPositionId() - 1;
@@ -1356,7 +1562,7 @@ contract ERC20VaultTest is Test {
     function test_BurnFailure() public {
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
-        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether, 0);
         vm.stopPrank();
 
         uint256 positionId = vault.nextPositionId() - 1;
@@ -1388,7 +1594,13 @@ contract ERC20VaultTest is Test {
         uint256 actualCollateral = collateralAmount - fee;
 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
         vm.stopPrank();
 
         uint256 positionId = vault.nextPositionId() - 1;
@@ -1426,7 +1638,7 @@ contract ERC20VaultTest is Test {
         vault.liquidatePosition(positionId);
 
         // Verify position unchanged
-        (, uint256 collateral, uint256 debt, , , ) = vault.getPosition(
+        (, uint256 collateral, uint256 debt, , , , ) = vault.getPosition(
             positionId
         );
         assertEq(collateral, actualCollateral, "Collateral should remain");
@@ -1444,9 +1656,27 @@ contract ERC20VaultTest is Test {
 
         // Open three positions
         WETH.approve(address(vault), collateralAmount * 3);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount); // Position 1
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount); // Position 2
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount); // Position 3
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        ); // Position 1
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        ); // Position 2
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        ); // Position 3
 
         uint256 positionId1 = 1;
         uint256 positionId2 = 2; // Middle position (to be liquidated)
@@ -1475,9 +1705,8 @@ contract ERC20VaultTest is Test {
         assertEq(userPositions[1], positionId3, "Last position should remain");
 
         // Check that position 2 is fully removed
-        (, uint256 pos2Collateral, uint256 pos2Debt, , , ) = vault.getPosition(
-            positionId2
-        );
+        (, uint256 pos2Collateral, uint256 pos2Debt, , , , ) = vault
+            .getPosition(positionId2);
         assertEq(
             pos2Collateral,
             0,
@@ -1486,12 +1715,10 @@ contract ERC20VaultTest is Test {
         assertEq(pos2Debt, 0, "Liquidated position should have zero debt");
 
         // Verify the remaining positions are untouched
-        (, uint256 pos1Collateral, uint256 pos1Debt, , , ) = vault.getPosition(
-            positionId1
-        );
-        (, uint256 pos3Collateral, uint256 pos3Debt, , , ) = vault.getPosition(
-            positionId3
-        );
+        (, uint256 pos1Collateral, uint256 pos1Debt, , , , ) = vault
+            .getPosition(positionId1);
+        (, uint256 pos3Collateral, uint256 pos3Debt, , , , ) = vault
+            .getPosition(positionId3);
 
         assertEq(
             pos1Collateral,
@@ -1516,7 +1743,7 @@ contract ERC20VaultTest is Test {
     function test_CollectInterestManually() public {
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
-        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether, 0);
         vm.stopPrank();
 
         vm.roll(block.number + 300);
@@ -1579,7 +1806,7 @@ contract ERC20VaultTest is Test {
     function test_CollectInterestNotReady() public {
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
-        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether, 0);
         vm.stopPrank();
 
         vm.prank(address(vault));
@@ -1595,7 +1822,7 @@ contract ERC20VaultTest is Test {
     function test_WithdrawInterest() public {
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
-        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether, 0);
         vm.stopPrank();
 
         vm.roll(block.number + 300);
@@ -1636,7 +1863,7 @@ contract ERC20VaultTest is Test {
     function test_WithdrawInterestTransferFail() public {
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
-        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether, 0);
         vm.stopPrank();
 
         vm.roll(block.number + 300);
@@ -1681,7 +1908,7 @@ contract ERC20VaultTest is Test {
 
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
-        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether, 0);
         vm.stopPrank();
 
         vm.roll(block.number + 300);
@@ -1695,7 +1922,7 @@ contract ERC20VaultTest is Test {
 
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
-        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether, 0);
         vm.stopPrank();
 
         vm.roll(block.number + 299); // Less than periodBlocks
@@ -1723,7 +1950,7 @@ contract ERC20VaultTest is Test {
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
         uint256 currentBlock = block.number;
-        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether, 0);
         vm.stopPrank();
 
         uint256 lastCollectionBlock = interestCollector.getLastCollectionBlock(
@@ -1740,7 +1967,7 @@ contract ERC20VaultTest is Test {
     function test_CalculateInterestDueZeroDebt() public {
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
-        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether, 0);
         shezUSD.approve(address(vault), 500 ether);
         vault.repayDebt(1, 500 ether); // Repay all debt
         vm.stopPrank();
@@ -1775,7 +2002,7 @@ contract ERC20VaultTest is Test {
     function test_CollectInterestNotVaultCaller() public {
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
-        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether, 0);
         vm.stopPrank();
 
         vm.roll(block.number + 300);
@@ -1793,7 +2020,7 @@ contract ERC20VaultTest is Test {
     function test_CollectInterestNoInterestDue() public {
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
-        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether, 0);
         vm.stopPrank();
 
         vm.roll(block.number + 300);
@@ -1812,11 +2039,13 @@ contract ERC20VaultTest is Test {
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
         uint256 currentBlock = block.number;
-        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether, 0);
         uint256 positionId = vault.nextPositionId() - 1; // Ensure correct position ID
         vm.stopPrank();
 
-        (, , , uint256 lastCollectionBlock, , ) = vault.getPosition(positionId);
+        (, , , uint256 lastCollectionBlock, , , ) = vault.getPosition(
+            positionId
+        );
         assertEq(
             lastCollectionBlock,
             currentBlock,
@@ -1833,7 +2062,13 @@ contract ERC20VaultTest is Test {
         uint256 actualCollateral = collateralAmount - fee;
 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
         vm.stopPrank();
 
         uint256 positionId = vault.nextPositionId() - 1;
@@ -1859,7 +2094,7 @@ contract ERC20VaultTest is Test {
         vault.liquidatePosition(positionId);
 
         // Verify position unchanged
-        (, uint256 collateral, uint256 debt, , , ) = vault.getPosition(
+        (, uint256 collateral, uint256 debt, , , , ) = vault.getPosition(
             positionId
         );
         assertEq(collateral, actualCollateral, "Collateral should remain");
@@ -1956,7 +2191,13 @@ contract ERC20VaultTest is Test {
         uint256 collateralAmount = 1000 ether;
         uint256 debtAmount = 500 ether;
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
         vm.stopPrank();
 
         uint256 positionId = vault.nextPositionId() - 1;
@@ -1976,7 +2217,13 @@ contract ERC20VaultTest is Test {
 
         WETH.approve(address(vault), collateralAmount);
         vm.expectRevert(ERC20Vault.InsufficientFee.selector);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
         vm.stopPrank();
     }
 
@@ -1985,7 +2232,13 @@ contract ERC20VaultTest is Test {
         uint256 collateralAmount = 1000 ether;
         uint256 debtAmount = 500 ether;
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
         vm.stopPrank();
 
         uint256 positionId = vault.nextPositionId() - 1;
@@ -2002,7 +2255,7 @@ contract ERC20VaultTest is Test {
         vault.addCollateralFor(positionId, user1, additionalCollateral);
         vm.stopPrank();
 
-        (, uint256 posCollateral, , , , ) = vault.getPosition(positionId);
+        (, uint256 posCollateral, , , , , ) = vault.getPosition(positionId);
         uint256 fee = (collateralAmount * MINT_FEE) / 100;
         assertEq(
             posCollateral,
@@ -2016,7 +2269,7 @@ contract ERC20VaultTest is Test {
         vault.borrowFor(positionId, user1, additionalDebt);
         vm.stopPrank();
 
-        (, , uint256 posDebt, , , ) = vault.getPosition(positionId);
+        (, , uint256 posDebt, , , , ) = vault.getPosition(positionId);
         assertEq(posDebt, debtAmount + additionalDebt, "Debt should increase");
     }
 
@@ -2035,7 +2288,13 @@ contract ERC20VaultTest is Test {
         uint256 collateralAmount = 1000 ether;
         uint256 debtAmount = 500 ether;
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
         vm.stopPrank();
 
         uint256[] memory positionIds = new uint256[](1);
@@ -2053,8 +2312,8 @@ contract ERC20VaultTest is Test {
     function testBatchLiquidateMultiplePositions() public {
         vm.startPrank(user1);
         WETH.approve(address(vault), 300 ether);
-        vault.openPosition(user1, address(WETH), 100 ether, 50 ether); // Position 1
-        vault.openPosition(user1, address(WETH), 200 ether, 100 ether); // Position 2
+        vault.openPosition(user1, address(WETH), 100 ether, 50 ether, 0); // Position 1
+        vault.openPosition(user1, address(WETH), 200 ether, 100 ether, 0); // Position 2
         vm.stopPrank();
 
         wethPriceFeed.setPrice(1 * 10 ** 8); // Drop to $1
@@ -2082,7 +2341,7 @@ contract ERC20VaultTest is Test {
     function testBatchLiquidateWithSoulBoundToken() public {
         vm.startPrank(user1);
         WETH.approve(address(vault), 1000 ether);
-        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether); // Position 1
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether, 0); // Position 1
         vm.stopPrank();
 
         wethPriceFeed.setPrice(1 * 10 ** 8); // Drop to $1
@@ -2106,10 +2365,16 @@ contract ERC20VaultTest is Test {
         uint256 debtAmount = 500 ether;
 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
 
         // Verify position has interest opt-out set
-        (, , , , , bool interestOptOut) = vault.getPosition(1);
+        (, , , , , bool interestOptOut, ) = vault.getPosition(1);
         assertTrue(interestOptOut, "Interest opt-out should be set");
 
         vm.stopPrank();
@@ -2124,7 +2389,13 @@ contract ERC20VaultTest is Test {
         uint256 debtAmount = 500 ether;
 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
 
         (
             address owner,
@@ -2132,7 +2403,8 @@ contract ERC20VaultTest is Test {
             uint256 debt,
             uint256 lastInterestBlock,
             ,
-            bool interestOptOut
+            bool interestOptOut,
+
         ) = vault.getPosition(1);
 
         assertEq(owner, user1, "Position owner should be user1");
@@ -2161,7 +2433,13 @@ contract ERC20VaultTest is Test {
         uint256 debtAmount = 500 ether;
 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
 
         uint256 positionId = vault.nextPositionId() - 1;
         uint256 maxBorrowable = vault.getMaxBorrowable(positionId);
@@ -2193,10 +2471,18 @@ contract ERC20VaultTest is Test {
         );
 
         vm.expectRevert(ERC20Vault.CollateralTransferFailed.selector);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
 
         // Verify no position was created
-        (, uint256 posCollateral, uint256 posDebt, , , ) = vault.getPosition(1);
+        (, uint256 posCollateral, uint256 posDebt, , , , ) = vault.getPosition(
+            1
+        );
         assertEq(posCollateral, 0, "Collateral should not be set");
         assertEq(posDebt, 0, "Debt should not be set");
 
@@ -2212,7 +2498,13 @@ contract ERC20VaultTest is Test {
         uint256 debtAmount = 500 ether;
 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
 
         uint256 positionId = vault.nextPositionId() - 1;
 
@@ -2220,7 +2512,7 @@ contract ERC20VaultTest is Test {
         uint256 additionalDebt = 100 ether; // Total debt will be 600 ether, still within 70% LTV ($140,000)
         vault.borrow(positionId, additionalDebt);
 
-        (, , uint256 posDebt, , , ) = vault.getPosition(positionId);
+        (, , uint256 posDebt, , , , ) = vault.getPosition(positionId);
         assertEq(
             posDebt,
             debtAmount + additionalDebt,
@@ -2249,7 +2541,13 @@ contract ERC20VaultTest is Test {
         uint256 debtAmount = 500 ether;
 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
 
         vm.expectRevert(ERC20Vault.ZeroLoanAmount.selector);
         vault.borrow(1, 0);
@@ -2266,7 +2564,13 @@ contract ERC20VaultTest is Test {
         uint256 debtAmount = 500 ether;
 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
 
         vm.expectRevert(ERC20Vault.LoanExceedsLTVLimit.selector);
         vault.borrow(1, 500 ether);
@@ -2287,7 +2591,13 @@ contract ERC20VaultTest is Test {
         uint256 debtAmount = 500 ether;
 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
 
         vm.stopPrank();
 
@@ -2311,7 +2621,13 @@ contract ERC20VaultTest is Test {
         uint256 debtAmount = 500 ether;
 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
 
         uint256 positionId = vault.nextPositionId() - 1;
 
@@ -2342,7 +2658,13 @@ contract ERC20VaultTest is Test {
         uint256 withdrawAmount = 100 ether;
 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
 
         uint256 positionId = vault.nextPositionId() - 1;
 
@@ -2370,7 +2692,13 @@ contract ERC20VaultTest is Test {
         uint256 debtAmount = 500 ether;
 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
 
         vm.stopPrank();
 
@@ -2397,8 +2725,8 @@ contract ERC20VaultTest is Test {
 
         // Open two positions
         WETH.approve(address(vault), 2000 ether);
-        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
-        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether, 0);
+        vault.openPosition(user1, address(WETH), 1000 ether, 500 ether, 0);
 
         vm.stopPrank();
 
@@ -2454,7 +2782,13 @@ contract ERC20VaultTest is Test {
         uint256 debtAmount = 500 ether;
 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
 
         uint256 fee = (collateralAmount * MINT_FEE) / 100;
         uint256 strategyAmount = aaveStrategy.amounts(1);
@@ -2490,7 +2824,13 @@ contract ERC20VaultTest is Test {
         uint256 debtAmount = 500 ether;
 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
 
         uint256 positionId = vault.nextPositionId() - 1;
 
@@ -2531,7 +2871,13 @@ contract ERC20VaultTest is Test {
         uint256 debtAmount = 500 ether;
 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
 
         uint256 positionId = vault.nextPositionId() - 1;
 
@@ -2569,7 +2915,13 @@ contract ERC20VaultTest is Test {
         uint256 debtAmount = 500 ether;
 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
 
         uint256 positionId = vault.nextPositionId() - 1;
 
@@ -2605,7 +2957,13 @@ contract ERC20VaultTest is Test {
         uint256 debtAmount = 500 ether;
 
         WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(user1, address(WETH), collateralAmount, debtAmount);
+        vault.openPosition(
+            user1,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            0
+        );
 
         vm.stopPrank();
 

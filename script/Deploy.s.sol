@@ -157,7 +157,8 @@ contract DeployScript is Script {
                 user1,
                 address(weth),
                 collateralAmount,
-                debtAmount
+                debtAmount,
+                0
             );
         }
 

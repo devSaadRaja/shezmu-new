@@ -10,6 +10,7 @@ interface IERC20Vault {
         uint256 lastInterestCollectionBlock;
         uint256 effectiveLtvRatio;
         bool interestOptOut;
+        uint256 leverage;
     }
 
     // ============ State Variables ============ //
@@ -55,7 +56,8 @@ interface IERC20Vault {
             uint256 debtAmount,
             uint256 lastInterestCollectionBlock,
             uint256 effectiveLtvRatio,
-            bool interestOptOut
+            bool interestOptOut,
+            uint256 leverage
         );
 
     function getCollateralBalance(address user) external view returns (uint256);
@@ -88,7 +90,8 @@ interface IERC20Vault {
         address owner,
         address collateral,
         uint256 collateralAmount,
-        uint256 debtAmount
+        uint256 debtAmount,
+        uint256 leverage
     ) external;
 
     function addCollateral(uint256 positionId, uint256 amount) external;
