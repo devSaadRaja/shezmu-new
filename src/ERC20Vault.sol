@@ -705,9 +705,8 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         if (pos.debtAmount == 0 || pos.collateralAmount == 0) return false;
 
         uint256 health = getPositionHealth(positionId);
-        uint256 liquidationThresholdValue = (pos.effectiveLtvRatio *
-            liquidationThreshold) / 100;
-        return health < ((PRECISION * liquidationThresholdValue) / 100);
+        uint256 threshold = (PRECISION * liquidationThreshold) / 100;
+        return health < threshold;
     }
 
     // ======================================================== //

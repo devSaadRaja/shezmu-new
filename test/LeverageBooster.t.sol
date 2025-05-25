@@ -73,7 +73,7 @@ contract LeverageBoosterTest is Test {
     InterestCollector interestCollector;
 
     uint256 constant INITIAL_LTV = 50;
-    uint256 constant LIQUIDATION_THRESHOLD = 110; // 110% of INITIAL_LTV
+    uint256 constant LIQUIDATION_THRESHOLD = 90; // 90% of INITIAL_LTV
     uint256 constant LIQUIDATOR_REWARD = 50; // 50%
     uint256 constant INTEREST_RATE = 500; // 5% annual interest in basis points
     uint256 constant MINT_FEE = 2; // 2%
