@@ -3,7 +3,7 @@ pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/access/Ownable2Step.sol";
 
 import {IERC20Vault} from "./interfaces/IERC20Vault.sol";
 import {IV4Router} from "v4-periphery/src/interfaces/IV4Router.sol";
@@ -20,7 +20,7 @@ import {Currency} from "v4-periphery/lib/v4-core/src/types/Currency.sol";
  * @notice Enables users to open leveraged positions in a vault by looping borrow and swap operations.
  * @dev Integrates with Uniswap v4 Universal Router and Permit2 for token swaps and approvals.
  */
-contract LeverageBooster is Ownable, ReentrancyGuard {
+contract LeverageBooster is Ownable2Step, ReentrancyGuard {
     // =============================================== //
     // ================== STRUCTURE ================== //
     // =============================================== //
