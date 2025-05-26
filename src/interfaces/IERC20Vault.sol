@@ -84,6 +84,8 @@ interface IERC20Vault {
 
     function isLiquidatable(uint256 positionId) external view returns (bool);
 
+    function soulBoundFeePercent() external view returns (uint256);
+
     // ============ Write Functions ============ //
 
     function openPosition(

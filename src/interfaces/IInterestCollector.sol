@@ -21,4 +21,8 @@ interface IInterestCollector {
     ) external view returns (bool);
 
     function setLastCollectionBlock(address vault, uint256 positionId) external;
+
+    function getVaultInterestRate(
+        address vault
+    ) external view returns (uint256);
 }

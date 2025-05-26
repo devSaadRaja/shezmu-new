@@ -780,10 +780,10 @@ contract ERC20VaultInvariantTest is Test {
         uint256[] memory posIds = vault.getUserPositionIds(user1);
         for (uint256 i = 0; i < posIds.length; i++) {
             uint256 positionId = posIds[i];
-            (, , uint256 debtAmount, , , , ) = vault.getPosition(positionId);
+            (, , uint256 debtAmount, , uint256 effectiveLtv, , ) = vault
+                .getPosition(1);
             if (debtAmount > 0) {
                 // Check LTV at the time of position creation
-                uint256 effectiveLtv = vault.getEffectiveLtvRatio(positionId);
                 uint256 ltvAtCreationForPos = ltvAtCreation[positionId];
                 assertLe(
                     ltvAtCreationForPos,
