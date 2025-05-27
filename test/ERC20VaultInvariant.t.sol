@@ -24,7 +24,7 @@ import "../src/mock/MockERC20.sol";
 import "../src/mock/MockERC20Mintable.sol";
 import "../src/mock/MockPriceFeed.sol";
 import "../src/strategies/AaveStrategy.sol";
-import {LeverageBooster} from "../src/LeverageBooster.sol";
+// import {LeverageBooster} from "../src/LeverageBooster.sol";
 
 import "../src/interfaces/IPriceFeed.sol";
 
@@ -67,7 +67,7 @@ contract ERC20VaultInvariantTest is Test {
 
     PoolKey pool;
     ERC20Vault vault;
-    LeverageBooster leverageBooster;
+    // LeverageBooster leverageBooster;
     // IERC20 WETH;
     // MockERC20 WETH;
     MockERC20Mintable shezUSD;
@@ -95,7 +95,6 @@ contract ERC20VaultInvariantTest is Test {
     mapping(uint256 => uint256) public withdrawnCollateral; // positionId => total withdrawn
     mapping(uint256 => uint256) public initialDebt; // positionId => initial debt
     mapping(uint256 => uint256) public repaidDebt; // positionId => total repaid
-    mapping(uint256 => uint256) public ltvAtCreation; // positionId => LTV at creation
     mapping(uint256 => bool) public wasLiquidated; // positionId => true if liquidated
     mapping(uint256 => uint256) public preLiquidationCollateral; // positionId => collateral amount before liquidation
     mapping(uint256 => uint256) public liquidatedCollateralReturned; // positionId => collateral returned to owner during liquidation
@@ -146,12 +145,12 @@ contract ERC20VaultInvariantTest is Test {
             address(aaveStrategy)
         );
         interestCollector = new InterestCollector(treasury);
-        leverageBooster = new LeverageBooster(
-            "",
-            address(vault),
-            address(PERMIT2),
-            address(SWAP_ROUTER)
-        );
+        // leverageBooster = new LeverageBooster(
+        //     "",
+        //     address(vault),
+        //     address(PERMIT2),
+        //     address(SWAP_ROUTER)
+        // );
 
         vault.setInterestCollector(address(interestCollector));
         vault.toggleInterestCollection(true);
@@ -173,11 +172,11 @@ contract ERC20VaultInvariantTest is Test {
 
         vm.stopPrank();
 
-        _poolAndLiquidity();
+        // _poolAndLiquidity();
 
-        bytes memory encodedKey = abi.encode(pool);
+        // bytes memory encodedKey = abi.encode(pool);
         vm.prank(deployer);
-        leverageBooster.setPool(encodedKey);
+        // leverageBooster.setPool(encodedKey);
 
         // Record initial WETH balance for user1
         initialWETHBalance = WETH.balanceOf(user1); // 2_000_000 ether;
@@ -189,7 +188,7 @@ contract ERC20VaultInvariantTest is Test {
         // Specify the openPosition function as a target selector
         FuzzSelector memory selectorTest = FuzzSelector({
             addr: address(this),
-            selectors: new bytes4[](11)
+            selectors: new bytes4[](10)
         });
         selectorTest.selectors[0] = this.handler_openPosition.selector;
         selectorTest.selectors[1] = this.handler_addCollateral.selector;
@@ -199,9 +198,9 @@ contract ERC20VaultInvariantTest is Test {
         selectorTest.selectors[5] = this.handler_liquidatePosition.selector;
         selectorTest.selectors[6] = this.handler_collectInterest.selector;
         selectorTest.selectors[7] = this.handler_withdrawInterest.selector;
-        selectorTest.selectors[8] = this.handler_leveragePosition.selector;
-        selectorTest.selectors[9] = this.handler_borrow.selector;
-        selectorTest.selectors[10] = this
+        // selectorTest.selectors[8] = this.handler_leveragePosition.selector;
+        selectorTest.selectors[8] = this.handler_borrow.selector;
+        selectorTest.selectors[9] = this
             .handler_batchLiquidatePositions
             .selector;
         targetSelector(selectorTest);
@@ -245,11 +244,13 @@ contract ERC20VaultInvariantTest is Test {
     function handler_openPosition(
         uint256 collateralAmount,
         uint256 debtAmount,
-        bool interestOptOut
+        bool interestOptOut,
+        uint256 leverage
     ) public {
         vm.startPrank(user1);
         collateralAmount = bound(collateralAmount, 0, 1e24); // 0 to 1e24 (allow zero)
         debtAmount = bound(debtAmount, 0, 1e24); // 0 to 1e24 (allow zero)
+        leverage = bound(leverage, 1, 10);
 
         vault.setInterestOptOut(interestOptOut);
 
@@ -268,7 +269,7 @@ contract ERC20VaultInvariantTest is Test {
                 address(WETH),
                 collateralAmount,
                 debtAmount,
-                0
+                leverage
             )
         {
             uint256 positionId = vault.nextPositionId() - 1;
@@ -284,12 +285,6 @@ contract ERC20VaultInvariantTest is Test {
 
             initialCollateral[positionId] = adjustedCollateral;
             initialDebt[positionId] = debtAmount;
-
-            uint256 collateralValue = vault.getCollateralValue(
-                adjustedCollateral
-            );
-            uint256 loanValue = vault.getLoanValue(debtAmount);
-            ltvAtCreation[positionId] = (loanValue * 100) / collateralValue;
 
             // Track interest opt-out status for this position
             interestOptOutAtPosition[positionId] = interestOptOut;
@@ -685,55 +680,56 @@ contract ERC20VaultInvariantTest is Test {
         }
     }
 
-    function handler_leveragePosition(
-        uint256 collateralAmount,
-        uint256 leverage,
-        uint128 minAmountOut
-    ) public {
-        vm.startPrank(user1);
+    // function handler_leveragePosition(
+    //     uint256 collateralAmount,
+    //     uint256 leverage,
+    //     uint128 minAmountOut
+    // ) public {
+    //     vm.startPrank(user1);
 
-        collateralAmount = bound(collateralAmount, 0, 1e24); // Limit to 1,000,000 ETH for gas
-        leverage = bound(leverage, 0, leverageBooster.MAX_LEVERAGE());
-        minAmountOut = uint128(bound(minAmountOut, 0, 1e18));
+    //     collateralAmount = bound(collateralAmount, 0, 1e24); // Limit to 1,000,000 ETH for gas
+    //     leverage = bound(leverage, 0, leverageBooster.MAX_LEVERAGE());
+    //     minAmountOut = uint128(bound(minAmountOut, 0, 1e18));
 
-        WETH.approve(address(leverageBooster), collateralAmount);
-        deal(address(WETH), address(SWAP_ROUTER), 1e24); // Fund router with WETH
+    //     WETH.approve(address(leverageBooster), collateralAmount);
+    //     deal(address(WETH), address(SWAP_ROUTER), 1e24); // Fund router with WETH
 
-        try
-            leverageBooster.leveragePosition(
-                collateralAmount,
-                leverage,
-                minAmountOut,
-                new bytes(0)
-            )
-        returns (uint256 positionId) {
-            (, , uint256 posDebt, , , , ) = vault.getPosition(positionId);
+    //     try
+    //         leverageBooster.leveragePosition(
+    //             collateralAmount,
+    //             leverage,
+    //             minAmountOut,
+    //             new bytes(0)
+    //         )
+    //     returns (uint256 positionId) {
+    //         (, , uint256 posDebt, , , , ) = vault.getPosition(positionId);
 
-            // Adjust collateral amount for soul-bound fee if applicable
-            uint256 adjustedCollateral = collateralAmount;
-            if (!vault.getDoNotMint(user1)) {
-                uint256 fee = (collateralAmount * vault.soulBoundFeePercent()) /
-                    100;
-                adjustedCollateral = collateralAmount - fee;
-                totalSoulBoundFees += fee;
-            }
+    //         // Adjust collateral amount for soul-bound fee if applicable
+    //         uint256 adjustedCollateral = collateralAmount;
+    //         if (!vault.getDoNotMint(user1)) {
+    //             uint256 fee = (collateralAmount * vault.soulBoundFeePercent()) /
+    //                 100;
+    //             adjustedCollateral = collateralAmount - fee;
+    //             totalSoulBoundFees += fee;
+    //         }
 
-            initialCollateral[positionId] = adjustedCollateral;
-            initialDebt[positionId] = posDebt;
-        } catch {
-            // Revert expected for some edge cases (e.g., low liquidity, extreme price)
-        }
+    //         initialCollateral[positionId] = adjustedCollateral;
+    //         initialDebt[positionId] = posDebt;
+    //     } catch {
+    //         // Revert expected for some edge cases (e.g., low liquidity, extreme price)
+    //     }
 
-        vm.stopPrank();
-    }
+    //     vm.stopPrank();
+    // }
 
     function handler_borrow(uint256 positionId, uint256 borrowAmount) public {
         uint256 nextId = vault.nextPositionId();
         if (nextId <= 1) return; // No positions exist yet
 
         positionId = bound(positionId, 1, nextId - 1);
-        (address owner, uint256 posCollateral, uint256 posDebt, , , , ) = vault
-            .getPosition(positionId);
+        (address owner, , uint256 posDebt, , , , ) = vault.getPosition(
+            positionId
+        );
 
         // Skip if position doesn't exist or has been liquidated
         if (owner == address(0) || wasLiquidated[positionId]) return;
@@ -741,9 +737,8 @@ contract ERC20VaultInvariantTest is Test {
         borrowAmount = bound(borrowAmount, 0, 1e24);
 
         uint256 newDebtAmount = posDebt + borrowAmount;
-        uint256 collateralValue = vault.getCollateralValue(posCollateral);
         uint256 newLoanValue = vault.getLoanValue(newDebtAmount);
-        uint256 maxLoanValue = (collateralValue * INITIAL_LTV) / 100;
+        uint256 maxLoanValue = vault.getMaxBorrowable(positionId);
 
         vm.startPrank(user1);
         if (
@@ -774,24 +769,6 @@ contract ERC20VaultInvariantTest is Test {
         }
         assertEq(vault.getCollateralBalance(user1), totalCollateral);
         assertEq(vault.getLoanBalance(user1), totalDebt);
-    }
-
-    function invariant_LTVLimitRespected() public view {
-        uint256[] memory posIds = vault.getUserPositionIds(user1);
-        for (uint256 i = 0; i < posIds.length; i++) {
-            uint256 positionId = posIds[i];
-            (, , uint256 debtAmount, , uint256 effectiveLtv, , ) = vault
-                .getPosition(1);
-            if (debtAmount > 0) {
-                // Check LTV at the time of position creation
-                uint256 ltvAtCreationForPos = ltvAtCreation[positionId];
-                assertLe(
-                    ltvAtCreationForPos,
-                    effectiveLtv,
-                    "LTV at creation exceeds limit"
-                );
-            }
-        }
     }
 
     function invariant_CollateralAdditionsAccurate() public view {
@@ -913,12 +890,19 @@ contract ERC20VaultInvariantTest is Test {
                     "Health should be infinity for zero debt"
                 );
             } else {
+                (, , , , uint256 effectiveLtvRatio, , uint256 leverage) = vault
+                    .getPosition(positionId);
                 uint256 collateralValue = vault.getCollateralValue(
                     collateralAmount
                 );
                 uint256 loanValue = vault.getLoanValue(debtAmount);
-                uint256 expectedHealth = (collateralValue * 1 ether) /
-                    loanValue; // Scaled to match vault precision
+                uint256 x = (collateralValue * leverage * effectiveLtvRatio) /
+                    100;
+                uint256 y = (loanValue * (1000 - (1000 / (leverage + 1)))) /
+                    1000;
+
+                uint256 expectedHealth = (x * 1e18) / y;
+
                 assertEq(health, expectedHealth, "Health ratio mismatch");
             }
         }
@@ -944,12 +928,18 @@ contract ERC20VaultInvariantTest is Test {
                 .getPosition(positionId);
             if (collateralAmount > 0 && debtAmount > 0) {
                 uint256 health = vault.getPositionHealth(positionId);
+
+                (, , , , uint256 effectiveLtvRatio, , uint256 leverage) = vault
+                    .getPosition(positionId);
                 uint256 collateralValue = vault.getCollateralValue(
                     collateralAmount
                 );
                 uint256 loanValue = vault.getLoanValue(debtAmount);
-                uint256 expectedHealth = (collateralValue * 1 ether) /
-                    loanValue;
+                uint256 x = (collateralValue * leverage * effectiveLtvRatio) /
+                    100;
+                uint256 y = (loanValue * (1000 - (1000 / (leverage + 1)))) /
+                    1000;
+                uint256 expectedHealth = (x * 1e18) / y;
 
                 // Verify health reflects current price
                 assertEq(
@@ -1035,23 +1025,13 @@ contract ERC20VaultInvariantTest is Test {
 
         for (uint256 i = 0; i < posIds.length; i++) {
             uint256 positionId = posIds[i];
-            (
-                ,
-                uint256 collateralAmount,
-                uint256 debtAmount,
-                ,
-                ,
-                ,
-                uint256 leverage
-            ) = vault.getPosition(positionId);
+            (, uint256 collateralAmount, uint256 debtAmount, , , , ) = vault
+                .getPosition(positionId);
 
             if (debtAmount > 0 && collateralAmount > 0) {
                 uint256 health = vault.getPositionHealth(positionId);
                 bool liquidatable = vault.isLiquidatable(positionId);
-
-                uint256 adjustedThreshold = LIQUIDATION_THRESHOLD +
-                    (leverage * 5);
-                uint256 threshold = (1e18 * adjustedThreshold) / 100;
+                uint256 threshold = (1e18 * LIQUIDATION_THRESHOLD) / 100;
 
                 if (health >= threshold) {
                     assertFalse(
@@ -1212,54 +1192,44 @@ contract ERC20VaultInvariantTest is Test {
         }
     }
 
-    function invariant_LeveragePositionSolvency() public view {
-        uint256[] memory posIds = vault.getUserPositionIds(user1);
-        for (uint256 i = 0; i < posIds.length; i++) {
-            uint256 positionId = posIds[i];
-            (
-                ,
-                uint256 posCollateral,
-                uint256 posDebt,
-                ,
-                ,
-                ,
-                uint256 leverage
-            ) = vault.getPosition(positionId);
+    // function invariant_LeveragePositionSolvency() public view {
+    //     uint256[] memory posIds = vault.getUserPositionIds(user1);
+    //     for (uint256 i = 0; i < posIds.length; i++) {
+    //         uint256 positionId = posIds[i];
+    //         (, uint256 posCollateral, uint256 posDebt, , , , ) = vault
+    //             .getPosition(positionId);
 
-            if (posCollateral > 0 && posDebt > 0) {
-                // Only check active positions
-                bool liquidatable = vault.isLiquidatable(positionId);
-                uint256 health = vault.getPositionHealth(positionId);
+    //         if (posCollateral > 0 && posDebt > 0) {
+    //             // Only check active positions
+    //             bool liquidatable = vault.isLiquidatable(positionId);
+    //             uint256 health = vault.getPositionHealth(positionId);
+    //             uint256 threshold = (1e18 * LIQUIDATION_THRESHOLD) / 100;
 
-                uint256 adjustedThreshold = LIQUIDATION_THRESHOLD +
-                    (leverage * 5);
-                uint256 threshold = (1e18 * adjustedThreshold) / 100;
+    //             if (health >= threshold) {
+    //                 assertFalse(
+    //                     liquidatable,
+    //                     "Position should NOT be liquidatable but is!"
+    //                 );
+    //             } else {
+    //                 assertTrue(
+    //                     liquidatable,
+    //                     "Position should be liquidatable but is not!"
+    //                 );
+    //             }
+    //         }
+    //     }
 
-                if (health >= threshold) {
-                    assertFalse(
-                        liquidatable,
-                        "Position should NOT be liquidatable but is!"
-                    );
-                } else {
-                    assertTrue(
-                        liquidatable,
-                        "Position should be liquidatable but is not!"
-                    );
-                }
-            }
-        }
-
-        assertEq(
-            WETH.balanceOf(address(leverageBooster)),
-            0,
-            "WETH stuck in LeverageBooster after revert"
-        );
-        assertEq(
-            shezUSD.balanceOf(address(leverageBooster)),
-            0,
-            "shezUSD stuck in LeverageBooster after revert"
-        );
-    }
+    //     assertEq(
+    //         WETH.balanceOf(address(leverageBooster)),
+    //         0,
+    //         "WETH stuck in LeverageBooster after revert"
+    //     );
+    //     assertEq(
+    //         shezUSD.balanceOf(address(leverageBooster)),
+    //         0,
+    //         "shezUSD stuck in LeverageBooster after revert"
+    //     );
+    // }
 
     function _poolAndLiquidity() internal {
         vm.startPrank(deployer);

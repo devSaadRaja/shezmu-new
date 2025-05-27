@@ -32,7 +32,7 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
 
     bytes32 public constant LEVERAGE_ROLE = keccak256("LEVERAGE_ROLE");
     uint256 public constant PRECISION = 1e18; // For precise calculations
-    uint256 public constant MAX_LEVERAGE = 10;
+    uint256 public constant MAX_LEVERAGE = 10; // 10x
 
     SoulBound public soulBoundToken;
     uint256 public soulBoundFeePercent = 2;
@@ -662,7 +662,12 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
 
         uint256 collateralValue = getCollateralValue(pos.collateralAmount);
         uint256 debtValue = getLoanValue(pos.debtAmount);
-        return (collateralValue * PRECISION) / debtValue;
+
+        uint256 x = (collateralValue * pos.leverage * pos.effectiveLtvRatio) /
+            100;
+        uint256 y = (debtValue * (1000 - (1000 / (pos.leverage + 1)))) / 1000;
+
+        return (x * PRECISION) / y;
     }
 
     /// @notice Calculates the USD value of a given amount of collateral
@@ -691,8 +696,7 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         if (pos.debtAmount == 0 || pos.collateralAmount == 0) return false;
 
         uint256 health = getPositionHealth(positionId);
-        uint256 adjustedThreshold = liquidationThreshold + (pos.leverage * 5); // Increase threshold by 5% per leverage level
-        uint256 threshold = (PRECISION * adjustedThreshold) / 100;
+        uint256 threshold = (PRECISION * liquidationThreshold) / 100;
 
         return health < threshold;
     }

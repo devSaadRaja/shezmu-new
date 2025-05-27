@@ -46,10 +46,12 @@ contract BadDebtHandler {
 
     function openPosition(
         uint256 collateralAmount,
-        uint256 debtAmount
+        uint256 debtAmount,
+        uint256 leverage
     ) external {
         collateralAmount = _bound(collateralAmount, 1 ether, 2_000_000 ether); // Realistic range
         debtAmount = _bound(debtAmount, 1 ether, 1e24); // Allow high debt for testing
+        leverage = _bound(leverage, 1, 10);
 
         WETH.approve(address(vault), collateralAmount);
 
@@ -65,7 +67,7 @@ contract BadDebtHandler {
                     address(WETH),
                     collateralAmount,
                     debtAmount,
-                    0
+                    leverage
                 )
             {
                 uint256 positionId = vault.nextPositionId() - 1;
@@ -400,12 +402,19 @@ contract ERC20VaultInvariantTest is Test {
                     "Health should be infinity for zero debt"
                 );
             } else {
+                (, , , , uint256 effectiveLtvRatio, , uint256 leverage) = vault
+                    .getPosition(positionId);
                 uint256 collateralValue = vault.getCollateralValue(
                     collateralAmount
                 );
                 uint256 loanValue = vault.getLoanValue(debtAmount);
-                uint256 expectedHealth = (collateralValue * 1 ether) /
-                    loanValue; // Scaled to match vault precision
+                uint256 x = (collateralValue * leverage * effectiveLtvRatio) /
+                    100;
+                uint256 y = (loanValue * (1000 - (1000 / (leverage + 1)))) /
+                    1000;
+
+                uint256 expectedHealth = (x * 1e18) / y;
+
                 assertApproxEqAbs(
                     health,
                     expectedHealth,
@@ -436,12 +445,20 @@ contract ERC20VaultInvariantTest is Test {
                 .getPosition(positionId);
             if (collateralAmount > 0 && debtAmount > 0) {
                 uint256 health = vault.getPositionHealth(positionId);
+
+                (, , , , uint256 effectiveLtvRatio, , uint256 leverage) = vault
+                    .getPosition(positionId);
                 uint256 collateralValue = vault.getCollateralValue(
                     collateralAmount
                 );
                 uint256 loanValue = vault.getLoanValue(debtAmount);
-                uint256 expectedHealth = (collateralValue * 1 ether) /
-                    loanValue;
+
+                uint256 x = (collateralValue * leverage * effectiveLtvRatio) /
+                    100;
+                uint256 y = (loanValue * (1000 - (1000 / (leverage + 1)))) /
+                    1000;
+
+                uint256 expectedHealth = (x * 1e18) / y;
 
                 // Verify health reflects current price
                 assertApproxEqAbs(

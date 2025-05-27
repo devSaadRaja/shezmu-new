@@ -441,8 +441,17 @@ contract ERC20VaultTest is Test {
         );
 
         uint256 health = vault.getPositionHealth(1);
-        uint256 healthEq = (vault.getCollateralValue(collateralAmount) *
-            vault.PRECISION()) / vault.getLoanValue(debtAmount);
+
+        (, , , , uint256 effectiveLtvRatio, , uint256 leverage) = vault
+            .getPosition(1);
+        uint256 collateralValue = vault.getCollateralValue(collateralAmount);
+        uint256 debtValue = vault.getLoanValue(debtAmount);
+
+        uint256 x = (collateralValue * 1 * effectiveLtvRatio) / 100;
+        uint256 y = (debtValue * (1000 - (1000 / (leverage + 1)))) / 1000;
+
+        uint256 healthEq = (x * 1e18) / y;
+
         assertEq(health, healthEq);
 
         uint256 healthInfinite = vault.getPositionHealth(2);
@@ -468,8 +477,19 @@ contract ERC20VaultTest is Test {
 
         uint256 fee = (collateralAmount * MINT_FEE) / 100;
         uint256 health = vault.getPositionHealth(1);
-        uint256 healthEq = (vault.getCollateralValue(collateralAmount - fee) *
-            vault.PRECISION()) / vault.getLoanValue(debtAmount);
+
+        (, , , , uint256 effectiveLtvRatio, , uint256 leverage) = vault
+            .getPosition(1);
+        uint256 collateralValue = vault.getCollateralValue(
+            collateralAmount - fee
+        );
+        uint256 debtValue = vault.getLoanValue(debtAmount);
+
+        uint256 x = (collateralValue * 1 * effectiveLtvRatio) / 100;
+        uint256 y = (debtValue * (1000 - (1000 / (leverage + 1)))) / 1000;
+
+        uint256 healthEq = (x * 1e18) / y;
+
         assertEq(health, healthEq);
         assertTrue(vault.getHasSoulBound(1));
 
@@ -611,8 +631,17 @@ contract ERC20VaultTest is Test {
 
         wethPriceFeed.setPrice(100 * 10 ** 8); // Drop to $100
         uint256 health = vault.getPositionHealth(1);
-        uint256 healthEq = (vault.getCollateralValue(collateralAmount) *
-            vault.PRECISION()) / vault.getLoanValue(debtAmount);
+
+        (, , , , uint256 effectiveLtvRatio, , uint256 leverage) = vault
+            .getPosition(1);
+        uint256 collateralValue = vault.getCollateralValue(collateralAmount);
+        uint256 debtValue = vault.getLoanValue(debtAmount);
+
+        uint256 x = (collateralValue * 1 * effectiveLtvRatio) / 100;
+        uint256 y = (debtValue * (1000 - (1000 / (leverage + 1)))) / 1000;
+
+        uint256 healthEq = (x * 1e18) / y;
+
         assertEq(health, healthEq);
 
         vm.expectRevert(
@@ -641,8 +670,19 @@ contract ERC20VaultTest is Test {
         uint256 fee = (collateralAmount * MINT_FEE) / 100;
         wethPriceFeed.setPrice(100 * 10 ** 8); // Drop to $100
         uint256 health = vault.getPositionHealth(1);
-        uint256 healthEq = (vault.getCollateralValue(collateralAmount - fee) *
-            vault.PRECISION()) / vault.getLoanValue(debtAmount);
+
+        (, , , , uint256 effectiveLtvRatio, , uint256 leverage) = vault
+            .getPosition(1);
+        uint256 collateralValue = vault.getCollateralValue(
+            collateralAmount - fee
+        );
+        uint256 debtValue = vault.getLoanValue(debtAmount);
+
+        uint256 x = (collateralValue * 1 * effectiveLtvRatio) / 100;
+        uint256 y = (debtValue * (1000 - (1000 / (leverage + 1)))) / 1000;
+
+        uint256 healthEq = (x * 1e18) / y;
+
         assertEq(health, healthEq);
 
         vm.expectRevert(
@@ -843,8 +883,16 @@ contract ERC20VaultTest is Test {
             1
         );
 
-        uint256 healthEq = (vault.getCollateralValue(collateralAmount) *
-            vault.PRECISION()) / vault.getLoanValue(debtAmount);
+        (, , , , uint256 effectiveLtvRatio, , uint256 leverage) = vault
+            .getPosition(1);
+        uint256 collateralValue = vault.getCollateralValue(collateralAmount);
+        uint256 debtValue = vault.getLoanValue(debtAmount);
+
+        uint256 x = (collateralValue * 1 * effectiveLtvRatio) / 100;
+        uint256 y = (debtValue * (1000 - (1000 / (leverage + 1)))) / 1000;
+
+        uint256 healthEq = (x * 1e18) / y;
+
         assertEq(vault.getPositionHealth(2), healthEq);
         assertEq(WETH.balanceOf(treasury), 0);
 
@@ -875,8 +923,18 @@ contract ERC20VaultTest is Test {
         );
 
         uint256 fee2 = (collateralAmount * MINT_FEE) / 100;
-        uint256 healthEq = (vault.getCollateralValue(collateralAmount - fee2) *
-            vault.PRECISION()) / vault.getLoanValue(debtAmount);
+
+        (, , , , uint256 effectiveLtvRatio, , uint256 leverage) = vault
+            .getPosition(1);
+        uint256 collateralValue = vault.getCollateralValue(
+            collateralAmount - fee2
+        );
+        uint256 debtValue = vault.getLoanValue(debtAmount);
+
+        uint256 x = (collateralValue * 1 * effectiveLtvRatio) / 100;
+        uint256 y = (debtValue * (1000 - (1000 / (leverage + 1)))) / 1000;
+
+        uint256 healthEq = (x * 1e18) / y;
 
         assertEq(vault.getPositionHealth(2), healthEq);
         assertEq(WETH.balanceOf(treasury), fee1 + fee2);
@@ -926,9 +984,18 @@ contract ERC20VaultTest is Test {
         );
         uint256 initialFee = (collateralAmount * MINT_FEE) / 100;
         uint256 initialHealth = vault.getPositionHealth(1);
-        uint256 healthEq = (vault.getCollateralValue(
+
+        (, , , , uint256 effectiveLtvRatio, , uint256 leverage) = vault
+            .getPosition(1);
+        uint256 collateralValue = vault.getCollateralValue(
             collateralAmount - initialFee
-        ) * vault.PRECISION()) / vault.getLoanValue(debtAmount);
+        );
+        uint256 debtValue = vault.getLoanValue(debtAmount);
+
+        uint256 x = (collateralValue * 1 * effectiveLtvRatio) / 100;
+        uint256 y = (debtValue * (1000 - (1000 / (leverage + 1)))) / 1000;
+
+        uint256 healthEq = (x * 1e18) / y;
 
         assertEq(initialHealth, healthEq);
 
@@ -958,8 +1025,16 @@ contract ERC20VaultTest is Test {
             1
         );
 
-        uint256 healthEq = (vault.getCollateralValue(collateralAmount) *
-            vault.PRECISION()) / vault.getLoanValue(debtAmount);
+        (, , , , uint256 effectiveLtvRatio, , uint256 leverage) = vault
+            .getPosition(1);
+        uint256 collateralValue = vault.getCollateralValue(collateralAmount);
+        uint256 debtValue = vault.getLoanValue(debtAmount);
+
+        uint256 x = (collateralValue * 1 * effectiveLtvRatio) / 100;
+        uint256 y = (debtValue * (1000 - (1000 / (leverage + 1)))) / 1000;
+
+        uint256 healthEq = (x * 1e18) / y;
+
         assertEq(vault.getPositionHealth(1), healthEq);
 
         wethPriceFeed.setPrice(150 * 10 ** 8);
@@ -991,8 +1066,15 @@ contract ERC20VaultTest is Test {
 
         uint256 fee = (collateralAmount * MINT_FEE) / 100;
 
-        uint256 healthEq = (vault.getCollateralValue(collateralAmount - fee) *
-            vault.PRECISION()) / vault.getLoanValue(debtAmount);
+        (, , , , uint256 effectiveLtvRatio, , uint256 leverage) = vault
+            .getPosition(1);
+        uint256 collateralValue = vault.getCollateralValue(collateralAmount - fee);
+        uint256 debtValue = vault.getLoanValue(debtAmount);
+
+        uint256 x = (collateralValue * 1 * effectiveLtvRatio) / 100;
+        uint256 y = (debtValue * (1000 - (1000 / (leverage + 1)))) / 1000;
+
+        uint256 healthEq = (x * 1e18) / y;
 
         assertEq(vault.getPositionHealth(1), healthEq);
 
