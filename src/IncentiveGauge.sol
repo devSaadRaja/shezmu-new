@@ -32,6 +32,9 @@ contract IncentiveGauge is ReentrancyGuard, AccessControl {
     uint256 public constant PRECISION = 1e18; // For precise calculations
     uint256 public constant SECONDS_PER_YEAR = 365 days;
 
+    address public treasury;
+    uint256 public protocolFee; // percentage in bips (2500 = 25%)
+
     IERC20Vault public immutable vault; // Reference to the ERC20Vault contract
     mapping(address => IncentivePool) pools; // Pools per collateral token
     mapping(address => address) collateralToIncentiveToken; // Maps collateral to incentive token
@@ -67,9 +70,12 @@ contract IncentiveGauge is ReentrancyGuard, AccessControl {
 
     /// @notice Initializes the IncentiveGauge contract
     /// @param _vault The address of the IERC20Vault contract
-    constructor(address _vault) {
+    constructor(address _vault, address _treasury, uint256 _protocolFee) {
         if (_vault == address(0)) revert InvalidCollateralType();
         vault = IERC20Vault(_vault);
+        treasury = _treasury;
+        protocolFee = _protocolFee;
+
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
 
@@ -104,17 +110,29 @@ contract IncentiveGauge is ReentrancyGuard, AccessControl {
             revert TransferFailed();
         }
 
+        uint256 protocolAmount = (amount * protocolFee) / 10000;
+        uint256 depositAmount = amount - protocolAmount;
+
+        if (!IERC20(token).transfer(treasury, protocolAmount)) {
+            revert TransferFailed();
+        }
+
         _updateReward(collateralToken, address(0));
 
         IncentivePool storage pool = pools[collateralToken];
-        pool.totalDeposited += amount;
+        pool.totalDeposited += depositAmount;
 
-        uint256 newRewardRate = amount / REWARD_DURATION;
+        uint256 newRewardRate = depositAmount / REWARD_DURATION;
         pool.rewardRate = newRewardRate;
         pool.periodFinish = block.timestamp + REWARD_DURATION;
         pool.lastUpdateTime = block.timestamp;
 
-        emit IncentivesDeposited(collateralToken, token, amount, msg.sender);
+        emit IncentivesDeposited(
+            collateralToken,
+            token,
+            depositAmount,
+            msg.sender
+        );
         emit RewardRateUpdated(
             collateralToken,
             newRewardRate,

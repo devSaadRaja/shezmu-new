@@ -36,6 +36,7 @@ contract IncentiveGaugeTest is Test {
     uint256 constant LIQUIDATION_THRESHOLD = 90; // 90% of INITIAL_LTV
     uint256 constant LIQUIDATOR_REWARD = 50; // 50%
     uint256 constant INTEREST_RATE = 500; // 5% annual interest in basis points
+    uint256 constant PROTOCOL_FEE = 2500; // bips (2500 = 25%)
 
     // =========================================== //
     // ================== SETUP ================== //
@@ -71,7 +72,11 @@ contract IncentiveGaugeTest is Test {
 
         interestCollector.registerVault(address(vault), INTEREST_RATE);
 
-        incentiveGauge = new IncentiveGauge(address(vault));
+        incentiveGauge = new IncentiveGauge(
+            address(vault),
+            treasury,
+            PROTOCOL_FEE
+        );
 
         WETH.transfer(user1, 2_000_000 ether);
         USDT.transfer(depositor, 2_000_000 * 10 ** 6);
@@ -153,12 +158,9 @@ contract IncentiveGaugeTest is Test {
 
     function testDepositIncentivesSuccess() public {
         vm.startPrank(depositor);
-        USDT.approve(address(incentiveGauge), 1000 * 10 ** 6);
-        incentiveGauge.depositIncentives(
-            address(USDT),
-            1000 * 10 ** 6,
-            address(WETH)
-        );
+        uint256 amount = 1000 * 10 ** 6;
+        USDT.approve(address(incentiveGauge), amount);
+        incentiveGauge.depositIncentives(address(USDT), amount, address(WETH));
         (
             address token,
             ,
@@ -167,9 +169,15 @@ contract IncentiveGaugeTest is Test {
             ,
 
         ) = incentiveGauge.getPoolData(address(WETH));
+
+        uint256 protocolAmount = (amount * PROTOCOL_FEE) / 10000;
+        uint256 depositAmount = amount - protocolAmount;
+
         assertEq(token, address(USDT));
-        assertEq(rewardRate, (1000 * 10 ** 6) / uint256(30 days));
         assertEq(periodFinish, block.timestamp + 30 days);
+        assertEq(rewardRate, depositAmount / uint256(30 days));
+        assertEq(USDT.balanceOf(address(treasury)), protocolAmount);
+        assertEq(USDT.balanceOf(address(incentiveGauge)), depositAmount);
         vm.stopPrank();
     }
 }
