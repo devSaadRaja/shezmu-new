@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.30;
 
 import "forge-std/Test.sol";
 
@@ -29,8 +29,9 @@ contract IncentiveGaugeTest is Test {
 
     address deployer = vm.addr(1);
     address user1 = vm.addr(2);
-    address depositor = vm.addr(3);
-    address treasury = vm.addr(4);
+    address user2 = vm.addr(3);
+    address depositor = vm.addr(4);
+    address treasury = vm.addr(5);
 
     uint256 constant INITIAL_LTV = 50;
     uint256 constant LIQUIDATION_THRESHOLD = 90; // 90% of INITIAL_LTV
@@ -79,13 +80,26 @@ contract IncentiveGaugeTest is Test {
         );
 
         WETH.transfer(user1, 2_000_000 ether);
+        WETH.transfer(user2, 2_000_000 ether);
+
         USDT.transfer(depositor, 2_000_000 * 10 ** 6);
 
         shezUSD.grantRole(keccak256("MINTER_ROLE"), address(vault));
         shezUSD.grantRole(keccak256("BURNER_ROLE"), address(vault));
 
         incentiveGauge.grantRole(keccak256("PROTOCOL_ROLE"), depositor);
+        incentiveGauge.setAllowedToken(address(USDT), true);
 
+        vm.stopPrank();
+
+        vm.startPrank(user1);
+        vault.setDoNotMint(true);
+        vault.setInterestOptOut(true);
+        vm.stopPrank();
+
+        vm.startPrank(user2);
+        vault.setDoNotMint(true);
+        vault.setInterestOptOut(true);
         vm.stopPrank();
     }
 
@@ -162,22 +176,84 @@ contract IncentiveGaugeTest is Test {
         USDT.approve(address(incentiveGauge), amount);
         incentiveGauge.depositIncentives(address(USDT), amount, address(WETH));
         (
-            address token,
-            ,
+            uint256 totalDeposited,
             uint256 rewardRate,
+            uint256 periodStart,
             uint256 periodFinish,
-            ,
-
-        ) = incentiveGauge.getPoolData(address(WETH));
+            uint256 lastUpdateTime
+        ) = incentiveGauge.getPoolData(address(USDT));
 
         uint256 protocolAmount = (amount * PROTOCOL_FEE) / 10000;
         uint256 depositAmount = amount - protocolAmount;
 
-        assertEq(token, address(USDT));
+        assertEq(totalDeposited, depositAmount);
+        assertEq(periodStart, block.timestamp);
         assertEq(periodFinish, block.timestamp + 30 days);
         assertEq(rewardRate, depositAmount / uint256(30 days));
         assertEq(USDT.balanceOf(address(treasury)), protocolAmount);
         assertEq(USDT.balanceOf(address(incentiveGauge)), depositAmount);
+        assertEq(lastUpdateTime, block.timestamp);
         vm.stopPrank();
+    }
+
+    function testRewardDistributionTwoUsers() public {
+        // Total collateral = 1000 ether
+        _openPosition(user1, 100 ether, 0);
+        _openPosition(user2, 900 ether, 0);
+
+        vm.startPrank(depositor);
+        USDT.approve(address(incentiveGauge), 1000 * 10 ** 6);
+        incentiveGauge.depositIncentives(
+            address(USDT),
+            1000 * 10 ** 6,
+            address(WETH)
+        );
+        vm.stopPrank();
+
+        // Fast forward half of reward period (15 days)
+        vm.warp(block.timestamp + (incentiveGauge.VESTING_DURATION() / 2));
+
+        uint256 user1Rewards = incentiveGauge.getClaimableRewards(
+            address(USDT),
+            user1
+        );
+        uint256 user2Rewards = incentiveGauge.getClaimableRewards(
+            address(USDT),
+            user2
+        );
+
+        assertEq(user1Rewards, 37.5 * 10 ** 6);
+        assertEq(user2Rewards, 337.5 * 10 ** 6);
+
+        // Fast forward to end of reward period (30 days)
+        vm.warp(block.timestamp + (incentiveGauge.VESTING_DURATION() / 2));
+
+        user1Rewards = incentiveGauge.getClaimableRewards(address(USDT), user1);
+        user2Rewards = incentiveGauge.getClaimableRewards(address(USDT), user2);
+
+        assertEq(user1Rewards, 75 * 10 ** 6);
+        assertEq(user2Rewards, 675 * 10 ** 6);
+    }
+
+    function _openPosition(
+        address user,
+        uint256 collateralAmount,
+        uint256 debtAmount
+    ) internal returns (uint256) {
+        vm.startPrank(user);
+
+        WETH.approve(address(vault), collateralAmount);
+        vault.openPosition(
+            user,
+            address(WETH),
+            collateralAmount,
+            debtAmount,
+            1 // leverage
+        );
+        uint256[] memory positionIds = vault.getUserPositionIds(user);
+
+        vm.stopPrank();
+
+        return positionIds[positionIds.length - 1];
     }
 }

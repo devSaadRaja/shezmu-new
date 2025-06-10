@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
+import "forge-std/Test.sol";
+
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -19,41 +21,36 @@ contract IncentiveGauge is ReentrancyGuard, AccessControl {
         address token; // The incentive token (e.g. FXS)
         uint256 totalDeposited; // Total amount of tokens deposited
         uint256 rewardRate; // Tokens distributed per second
+        uint256 periodStart; // Timestamp when the reward period ends
         uint256 periodFinish; // Timestamp when the reward period ends
         uint256 lastUpdateTime; // Last time the pool was updated
-        uint256 rewardPerTokenStored; // Accumulated reward per token
-        mapping(address => uint256) userRewardPerTokenPaid; // Tracks user reward progress
-        mapping(address => uint256) rewards; // Claimable rewards per user
     }
 
     bytes32 public constant PROTOCOL_ROLE = keccak256("PROTOCOL_ROLE");
 
-    uint256 public constant REWARD_DURATION = 30 days; // Linear vesting period
+    uint256 public constant VESTING_DURATION = 30 days; // Linear vesting period
     uint256 public constant PRECISION = 1e18; // For precise calculations
-    uint256 public constant SECONDS_PER_YEAR = 365 days;
 
     address public treasury;
     uint256 public protocolFee; // percentage in bips (2500 = 25%)
 
     IERC20Vault public immutable vault; // Reference to the ERC20Vault contract
+    mapping(address => bool) allowedTokens; // Incentive tokens allowed
+
     mapping(address => IncentivePool) pools; // Pools per collateral token
-    mapping(address => address) collateralToIncentiveToken; // Maps collateral to incentive token
+    mapping(address => uint256) lastClaimed; // user => timestamp
 
     // ============================================ //
     // ================== EVENTS ================== //
     // ============================================ //
 
     event IncentivesDeposited(
-        address indexed collateralToken,
         address indexed token,
         uint256 amount,
         address indexed depositor
     );
-    event RewardRateUpdated(
-        address indexed collateralToken,
-        uint256 rewardRate,
-        uint256 periodFinish
-    );
+    event RewardRateUpdated(uint256 rewardRate, uint256 periodFinish);
+    event AllowedTokenSet(address indexed token, bool allowed);
 
     // ============================================ //
     // ================== ERRORS ================== //
@@ -98,13 +95,7 @@ contract IncentiveGauge is ReentrancyGuard, AccessControl {
             revert InvalidCollateralType();
         }
 
-        // Initialize pool if it doesn't exist
-        if (pools[collateralToken].token == address(0)) {
-            pools[collateralToken].token = token;
-            collateralToIncentiveToken[collateralToken] = token;
-        } else if (pools[collateralToken].token != token) {
-            revert InvalidToken();
-        }
+        if (!allowedTokens[token]) revert InvalidToken();
 
         if (!IERC20(token).transferFrom(msg.sender, address(this), amount)) {
             revert TransferFailed();
@@ -117,130 +108,89 @@ contract IncentiveGauge is ReentrancyGuard, AccessControl {
             revert TransferFailed();
         }
 
-        _updateReward(collateralToken, address(0));
+        uint256 newRewardRate = depositAmount / VESTING_DURATION;
 
-        IncentivePool storage pool = pools[collateralToken];
+        IncentivePool storage pool = pools[token];
+        pool.token = token;
         pool.totalDeposited += depositAmount;
-
-        uint256 newRewardRate = depositAmount / REWARD_DURATION;
         pool.rewardRate = newRewardRate;
-        pool.periodFinish = block.timestamp + REWARD_DURATION;
+        pool.periodStart = block.timestamp;
+        pool.periodFinish = block.timestamp + VESTING_DURATION;
         pool.lastUpdateTime = block.timestamp;
 
-        emit IncentivesDeposited(
-            collateralToken,
-            token,
-            depositAmount,
-            msg.sender
-        );
-        emit RewardRateUpdated(
-            collateralToken,
-            newRewardRate,
-            pool.periodFinish
-        );
+        emit IncentivesDeposited(token, depositAmount, msg.sender);
+        emit RewardRateUpdated(newRewardRate, pool.periodFinish);
+    }
+
+    /// @notice Sets the allowed incentive tokens for deposits
+    /// @dev Only callable by an account with the PROTOCOL_ROLE
+    /// @param token The token address to allow or disallow
+    /// @param allowed boolean indicating if the token is allowed (true) or not (false)
+    function setAllowedToken(
+        address token,
+        bool allowed
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        allowedTokens[token] = allowed;
+        emit AllowedTokenSet(token, allowed);
     }
 
     /// @notice Returns the pool data for a given collateral token
-    /// @param collateralToken The address of the collateral token
-    /// @return token The address of the token in the pool
+    /// @param token The address of the incentive token
     /// @return totalDeposited The total amount deposited in the pool
     /// @return rewardRate The current reward rate of the pool
+    /// @return periodStart The timestamp when the reward period starts
     /// @return periodFinish The timestamp when the reward period will finish
     /// @return lastUpdateTime The last time the pool's reward rate was updated
     function getPoolData(
-        address collateralToken
+        address token
     )
         external
         view
         returns (
-            address token,
             uint256 totalDeposited,
             uint256 rewardRate,
+            uint256 periodStart,
             uint256 periodFinish,
-            uint256 lastUpdateTime,
-            uint256 rewardPerTokenStored
+            uint256 lastUpdateTime
         )
     {
-        IncentivePool storage pool = pools[collateralToken];
-        token = pool.token;
+        IncentivePool storage pool = pools[token];
         totalDeposited = pool.totalDeposited;
         rewardRate = pool.rewardRate;
+        periodStart = pool.periodStart;
         periodFinish = pool.periodFinish;
         lastUpdateTime = pool.lastUpdateTime;
-        rewardPerTokenStored = pool.rewardPerTokenStored;
     }
 
-    // ====================================================== //
-    // ================== PUBLIC FUNCTIONS ================== //
-    // ====================================================== //
+    /// @notice Returns true if the token is allowed for incentives
+    /// @param token The address of the incentive token to check
+    /// @return True if the token is allowed, false otherwise
+    function isTokenAllowed(address token) external view returns (bool) {
+        return allowedTokens[token];
+    }
 
     /// @notice Gets the claimable rewards for a user
-    /// @param collateralToken The address of the collateral token
+    /// @param token The address of the incentive token
     /// @param user The address of the user
     /// @return The amount of claimable rewards
     function getClaimableRewards(
-        address collateralToken,
+        address token,
         address user
-    ) public view returns (uint256) {
-        IncentivePool storage pool = pools[collateralToken];
+    ) external view returns (uint256) {
+        IncentivePool storage pool = pools[token];
         if (pool.token == address(0)) return 0;
 
-        uint256 rewardPerToken = _rewardPerToken(collateralToken);
-        uint256 userCollateral = vault.getCollateralBalance(user);
+        uint256 allocation = (pool.totalDeposited *
+            vault.getCollateralBalance(user)) / vault.totalCollateral();
 
-        return
-            pool.rewards[user] +
-            ((userCollateral *
-                (rewardPerToken - pool.userRewardPerTokenPaid[user])) /
-                PRECISION);
-    }
+        uint256 lastRewardClaimed = lastClaimed[user] > 0
+            ? lastClaimed[user]
+            : pool.lastUpdateTime;
+        uint256 elapsed = block.timestamp - lastRewardClaimed;
+        uint256 duration = elapsed >= VESTING_DURATION
+            ? VESTING_DURATION
+            : elapsed;
 
-    // ======================================================== //
-    // ================== INTERNAL FUNCTIONS ================== //
-    // ======================================================== //
-
-    /// @notice Updates the reward state for a collateral pool
-    /// @param collateralToken The address of the collateral token
-    /// @param user The address of the user to update rewards for (address(0) for pool-only update)
-    function _updateReward(address collateralToken, address user) internal {
-        IncentivePool storage pool = pools[collateralToken];
-        if (pool.token == address(0)) return;
-
-        pool.rewardPerTokenStored = _rewardPerToken(collateralToken);
-        pool.lastUpdateTime = _lastTimeRewardApplicable(collateralToken);
-
-        if (user != address(0)) {
-            pool.rewards[user] = getClaimableRewards(collateralToken, user);
-            pool.userRewardPerTokenPaid[user] = pool.rewardPerTokenStored;
-        }
-    }
-
-    /// @notice Calculates the reward per token for a collateral pool
-    /// @param collateralToken The address of the collateral token
-    /// @return The reward per token
-    function _rewardPerToken(
-        address collateralToken
-    ) internal view returns (uint256) {
-        IncentivePool storage pool = pools[collateralToken];
-        if (vault.totalDebt() == 0) return pool.rewardPerTokenStored;
-
-        uint256 timeDelta = _lastTimeRewardApplicable(collateralToken) -
-            pool.lastUpdateTime;
-        return
-            pool.rewardPerTokenStored +
-            ((timeDelta * pool.rewardRate * PRECISION) / vault.totalDebt());
-    }
-
-    /// @notice Gets the last timestamp when rewards are applicable
-    /// @param collateralToken The address of the collateral token
-    /// @return The last applicable timestamp
-    function _lastTimeRewardApplicable(
-        address collateralToken
-    ) internal view returns (uint256) {
-        IncentivePool storage pool = pools[collateralToken];
-        return
-            block.timestamp < pool.periodFinish
-                ? block.timestamp
-                : pool.periodFinish;
+        return (allocation * duration) / VESTING_DURATION;
     }
 }

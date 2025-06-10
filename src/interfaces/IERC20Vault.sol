@@ -37,6 +37,8 @@ interface IERC20Vault {
 
     function totalDebt() external view returns (uint256);
 
+    function totalCollateral() external view returns (uint256);
+
     function interestCollectionEnabled() external view returns (bool);
 
     function interestCollector() external view returns (address);

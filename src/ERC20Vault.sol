@@ -60,6 +60,7 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
     mapping(address => uint256) loanBalances;
 
     uint256 public totalDebt;
+    uint256 public totalCollateral;
     bool public interestCollectionEnabled;
     IInterestCollector public interestCollector;
 
@@ -228,6 +229,8 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
 
         collateralBalances[owner] += adjustedCollateral;
         loanBalances[owner] += debtAmount;
+
+        totalCollateral += adjustedCollateral;
         totalDebt += debtAmount;
 
         loanToken.mint(owner, debtAmount);
@@ -252,7 +255,12 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
             strategy.deposit(positionId, pos.collateralAmount);
         }
 
-        emit PositionOpened(positionId, owner, collateralAmount, debtAmount);
+        emit PositionOpened(
+            positionId,
+            owner,
+            pos.collateralAmount,
+            debtAmount
+        );
     }
 
     /// @notice Adds additional collateral to an existing position
@@ -360,6 +368,7 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
 
         positions[positionId].collateralAmount = newCollateralAmount;
         collateralBalances[msg.sender] -= amount;
+        totalCollateral -= amount;
 
         if (
             address(strategy) != address(0) &&
@@ -420,6 +429,7 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         collateralBalances[positionOwner] -= collateralAmount;
         loanBalances[positionOwner] -= debtAmount;
 
+        totalCollateral -= collateralAmount;
         totalDebt -= debtAmount;
 
         _deletePosition(positionId, positionOwner);
@@ -460,6 +470,7 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
             // Update balances
             collateralBalances[positionOwner] -= collateralAmount;
             loanBalances[positionOwner] -= debtAmount;
+            totalCollateral -= collateralAmount;
             totalDebt -= debtAmount;
 
             if (
@@ -727,6 +738,7 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
 
         positions[positionId].collateralAmount += amount;
         collateralBalances[onBehalfOf] += amount;
+        totalCollateral += amount;
 
         emit CollateralAdded(positionId, amount);
     }
