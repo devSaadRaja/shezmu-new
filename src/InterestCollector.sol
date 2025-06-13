@@ -285,6 +285,6 @@ contract InterestCollector is ReentrancyGuard, Ownable2Step {
         uint256 periodInterest = (annualInterest * periodShare) /
             (10000 * PRECISION);
 
-        return periodInterest * periodsPassed;
+        return (periodInterest * blocksPassed) / periodBlocks;
     }
 }
