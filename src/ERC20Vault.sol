@@ -36,21 +36,22 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
     bytes32 public constant LEVERAGE_ROLE = keccak256("LEVERAGE_ROLE");
     uint256 public constant PRECISION = 1e18; // For precise calculations
     uint256 public constant MAX_LEVERAGE = 10; // 10x
+    uint256 public constant BIPS_HUNDRED = 10000;
 
     SoulBound public soulBoundToken;
-    uint256 public soulBoundFeePercent = 2;
+    uint256 public soulBoundFeePercent = 200; // bips
     mapping(uint256 => bool) hasSoulBound; // Tracks if a position has a soul-bound token
     mapping(address => bool) doNotMint; // check if user has not allowed soulbound (deducting fee)
 
     IStrategy public strategy;
     mapping(address => bool) interestOptOut; // default interest accrual
 
-    IERC20 public collateralToken;
-    EERC20 public loanToken;
-    uint256 public ltvRatio; // Loan-to-Value ratio in percentage (e.g., 50 for 50%)
-    uint256 public liquidationThreshold; // % of LTV ratio as liquidation threshold
-    uint256 public liquidatorReward; // 50 for 50%
-    uint256 public penaltyRate = 10; // 10 for 10%
+    IERC20 public immutable collateralToken;
+    EERC20 public immutable loanToken;
+    uint256 public immutable liquidationThreshold; // % of LTV ratio as liquidation threshold
+    uint256 public immutable liquidatorReward; // 50 for 50%
+    uint256 public immutable penaltyRate; // 10 for 10%
+    uint256 public ltvRatio; // Loan-to-Value ratio in bips (e.g., 5000 for 50%)
 
     IPriceFeed public collateralPriceFeed;
     IPriceFeed public loanPriceFeed;
@@ -135,11 +136,13 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         address _collateralPriceFeed,
         address _loanPriceFeed,
         address _treasury,
-        address _strategy
+        address _strategy,
+        uint256 _penalty
     ) {
         if (_collateralToken == address(0)) revert InvalidCollateralToken();
         if (_loanToken == address(0)) revert InvalidLoanToken();
-        if (_ltvRatio == 0 || _ltvRatio > 100) revert InvalidLTVRatio();
+        if (_ltvRatio == 0 || _ltvRatio > BIPS_HUNDRED)
+            revert InvalidLTVRatio();
         if (_collateralPriceFeed == address(0))
             revert InvalidCollateralPriceFeed();
         if (_loanPriceFeed == address(0)) revert InvalidLoanPriceFeed();
@@ -154,6 +157,7 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         loanPriceFeed = IPriceFeed(_loanPriceFeed);
         treasury = _treasury;
         strategy = IStrategy(_strategy);
+        penaltyRate = _penalty;
 
         soulBoundToken = new SoulBound(address(this));
 
@@ -349,7 +353,8 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
             );
             uint256 loanValue = getLoanValue(currentDebt);
             uint256 effectiveLtv = positions[positionId].effectiveLtvRatio;
-            uint256 minCollateralValue = (loanValue * 100) / effectiveLtv;
+            uint256 minCollateralValue = (loanValue * BIPS_HUNDRED) /
+                effectiveLtv;
             if (remainingCollateralValue < minCollateralValue) {
                 revert InsufficientCollateralAfterWithdrawal();
             }
@@ -514,7 +519,9 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
     function updateLtvRatio(
         uint256 newLtvRatio
     ) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (newLtvRatio == 0 || newLtvRatio > 100) revert InvalidLTVRatio();
+        if (newLtvRatio == 0 || newLtvRatio > BIPS_HUNDRED) {
+            revert InvalidLTVRatio();
+        }
         ltvRatio = newLtvRatio;
     }
 
@@ -644,7 +651,7 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         uint256 debtValue = getLoanValue(pos.debtAmount);
 
         uint256 x = (collateralValue * pos.leverage * pos.effectiveLtvRatio) /
-            100;
+            BIPS_HUNDRED;
         uint256 y = (debtValue * (1000 - (1000 / (pos.leverage + 1)))) / 1000;
 
         return (x * PRECISION) / y;
@@ -838,19 +845,20 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         adjustedCollateral = collateralAmount;
 
         if (open && !doNotMint[user]) {
-            fee = (collateralAmount * soulBoundFeePercent) / 100;
+            fee = (collateralAmount * soulBoundFeePercent) / BIPS_HUNDRED;
             adjustedCollateral = collateralAmount - fee;
 
-            uint256 differenceTo100 = 100 - baseLtvRatio;
+            uint256 differenceTo100 = BIPS_HUNDRED - baseLtvRatio;
             uint256 halfDifference = differenceTo100 / 2;
-            uint256 newLtvBeforeFee = 100 - halfDifference;
+            uint256 newLtvBeforeFee = BIPS_HUNDRED - halfDifference;
             effectiveLtvRatio = newLtvBeforeFee - soulBoundFeePercent;
         }
 
         uint256 collateralValue = getCollateralValue(adjustedCollateral);
         uint256 loanValueNeeded = collateralValue * leverage;
 
-        uint256 loanValue = (loanValueNeeded * effectiveLtvRatio) / 100;
+        uint256 loanValue = (loanValueNeeded * effectiveLtvRatio) /
+            BIPS_HUNDRED;
         uint256 loanPrice = getLoanValue(1 ether);
 
         debtAmount = (loanValue * PRECISION) / loanPrice;

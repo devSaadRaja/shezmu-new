@@ -93,7 +93,8 @@ contract DeployScript is Script {
             address(wethPriceFeed),
             address(shezUSDPriceFeed),
             treasury,
-            address(0)
+            address(0),
+            10
         );
 
         interestCollector = new InterestCollector(treasury);

@@ -57,7 +57,8 @@ contract ERC20VaultTest is Test {
 
     InterestCollector interestCollector;
 
-    uint256 constant INITIAL_LTV = 70;
+    uint256 constant DENOMINATOR = 10000;
+    uint256 constant INITIAL_LTV = 7000; // bips
     uint256 constant LIQUIDATION_THRESHOLD = 90; // 90% of LTV
     uint256 constant LIQUIDATOR_REWARD = 50; // 50%
     uint256 constant INTEREST_RATE = 500; // 5% annual interest in basis points
@@ -100,7 +101,8 @@ contract ERC20VaultTest is Test {
             address(wethPriceFeed),
             address(shezUSDPriceFeed),
             treasury,
-            address(0)
+            address(0),
+            PENALTY_RATE
         );
         interestCollector = new InterestCollector(treasury);
 
@@ -141,7 +143,7 @@ contract ERC20VaultTest is Test {
         vault.setDoNotMint(true);
 
         uint256 collateralAmount = 1000 ether; // $200,000 worth
-        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / 100; // % LTV
+        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / DENOMINATOR; // % LTV
 
         WETH.approve(address(vault), collateralAmount);
         vault.openPosition(
@@ -169,7 +171,7 @@ contract ERC20VaultTest is Test {
         vm.startPrank(user1);
 
         uint256 collateralAmount = 1000 ether; // $200,000 worth
-        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / 100; // % LTV
+        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / DENOMINATOR; // % LTV
 
         WETH.approve(address(vault), collateralAmount);
         vault.openPosition(
@@ -352,7 +354,7 @@ contract ERC20VaultTest is Test {
         vault.setDoNotMint(true);
 
         uint256 collateralAmount = 1000 ether;
-        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / 100;
+        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / DENOMINATOR;
 
         WETH.approve(address(vault), collateralAmount);
         vault.openPosition(
@@ -376,7 +378,7 @@ contract ERC20VaultTest is Test {
         vm.startPrank(user1);
 
         uint256 collateralAmount = 1000 ether;
-        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / 100;
+        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / DENOMINATOR;
 
         WETH.approve(address(vault), collateralAmount);
         vault.openPosition(
@@ -402,7 +404,7 @@ contract ERC20VaultTest is Test {
         vm.startPrank(user1);
 
         uint256 collateralAmount = 1000 ether;
-        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / 100;
+        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / DENOMINATOR;
         uint256 repayAmount = 300 ether;
 
         WETH.approve(address(vault), collateralAmount);
@@ -429,7 +431,7 @@ contract ERC20VaultTest is Test {
         vault.setDoNotMint(true);
 
         uint256 collateralAmount = 1000 ether; // $200,000
-        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / 100;
+        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / DENOMINATOR;
 
         WETH.approve(address(vault), collateralAmount);
         vault.openPosition(
@@ -447,7 +449,7 @@ contract ERC20VaultTest is Test {
         uint256 collateralValue = vault.getCollateralValue(collateralAmount);
         uint256 debtValue = vault.getLoanValue(debtAmount);
 
-        uint256 x = (collateralValue * 1 * effectiveLtvRatio) / 100;
+        uint256 x = (collateralValue * 1 * effectiveLtvRatio) / DENOMINATOR;
         uint256 y = (debtValue * (1000 - (1000 / (leverage + 1)))) / 1000;
 
         uint256 healthEq = (x * 1e18) / y;
@@ -464,7 +466,7 @@ contract ERC20VaultTest is Test {
         vm.startPrank(user1);
 
         uint256 collateralAmount = 1000 ether; // $200,000
-        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / 100;
+        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / DENOMINATOR;
 
         WETH.approve(address(vault), collateralAmount);
         vault.openPosition(
@@ -485,7 +487,7 @@ contract ERC20VaultTest is Test {
         );
         uint256 debtValue = vault.getLoanValue(debtAmount);
 
-        uint256 x = (collateralValue * 1 * effectiveLtvRatio) / 100;
+        uint256 x = (collateralValue * 1 * effectiveLtvRatio) / DENOMINATOR;
         uint256 y = (debtValue * (1000 - (1000 / (leverage + 1)))) / 1000;
 
         uint256 healthEq = (x * 1e18) / y;
@@ -619,7 +621,7 @@ contract ERC20VaultTest is Test {
         vault.setDoNotMint(true);
 
         uint256 collateralAmount = 1000 ether;
-        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / 100;
+        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / DENOMINATOR;
         WETH.approve(address(vault), collateralAmount);
         vault.openPosition(
             user1,
@@ -637,7 +639,7 @@ contract ERC20VaultTest is Test {
         uint256 collateralValue = vault.getCollateralValue(collateralAmount);
         uint256 debtValue = vault.getLoanValue(debtAmount);
 
-        uint256 x = (collateralValue * 1 * effectiveLtvRatio) / 100;
+        uint256 x = (collateralValue * 1 * effectiveLtvRatio) / DENOMINATOR;
         uint256 y = (debtValue * (1000 - (1000 / (leverage + 1)))) / 1000;
 
         uint256 healthEq = (x * 1e18) / y;
@@ -657,7 +659,7 @@ contract ERC20VaultTest is Test {
         vm.startPrank(user1);
 
         uint256 collateralAmount = 1000 ether;
-        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / 100;
+        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / DENOMINATOR;
         WETH.approve(address(vault), collateralAmount);
         vault.openPosition(
             user1,
@@ -678,7 +680,7 @@ contract ERC20VaultTest is Test {
         );
         uint256 debtValue = vault.getLoanValue(debtAmount);
 
-        uint256 x = (collateralValue * 1 * effectiveLtvRatio) / 100;
+        uint256 x = (collateralValue * 1 * effectiveLtvRatio) / DENOMINATOR;
         uint256 y = (debtValue * (1000 - (1000 / (leverage + 1)))) / 1000;
 
         uint256 healthEq = (x * 1e18) / y;
@@ -874,7 +876,7 @@ contract ERC20VaultTest is Test {
         uint256 healthSmallDebt = vault.getPositionHealth(1);
         assertGt(healthSmallDebt, 1000 ether);
 
-        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / 100; // % LTV
+        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / DENOMINATOR; // % LTV
         vault.openPosition(
             user1,
             address(WETH),
@@ -888,7 +890,7 @@ contract ERC20VaultTest is Test {
         uint256 collateralValue = vault.getCollateralValue(collateralAmount);
         uint256 debtValue = vault.getLoanValue(debtAmount);
 
-        uint256 x = (collateralValue * 1 * effectiveLtvRatio) / 100;
+        uint256 x = (collateralValue * 1 * effectiveLtvRatio) / DENOMINATOR;
         uint256 y = (debtValue * (1000 - (1000 / (leverage + 1)))) / 1000;
 
         uint256 healthEq = (x * 1e18) / y;
@@ -912,7 +914,7 @@ contract ERC20VaultTest is Test {
 
         assertGt(healthSmallDebt, 1000 ether);
 
-        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / 100; // % LTV
+        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / DENOMINATOR; // % LTV
 
         vault.openPosition(
             user1,
@@ -931,7 +933,7 @@ contract ERC20VaultTest is Test {
         );
         uint256 debtValue = vault.getLoanValue(debtAmount);
 
-        uint256 x = (collateralValue * 1 * effectiveLtvRatio) / 100;
+        uint256 x = (collateralValue * 1 * effectiveLtvRatio) / DENOMINATOR;
         uint256 y = (debtValue * (1000 - (1000 / (leverage + 1)))) / 1000;
 
         uint256 healthEq = (x * 1e18) / y;
@@ -949,7 +951,7 @@ contract ERC20VaultTest is Test {
         WETH.approve(address(vault), 1200 ether);
 
         uint256 collateralAmount = 1000 ether;
-        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / 100; // % LTV
+        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / DENOMINATOR; // % LTV
 
         vault.openPosition(
             user1,
@@ -973,7 +975,7 @@ contract ERC20VaultTest is Test {
         WETH.approve(address(vault), 1200 ether);
 
         uint256 collateralAmount = 1000 ether;
-        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / 100; // % LTV
+        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / DENOMINATOR; // % LTV
 
         vault.openPosition(
             user1,
@@ -992,7 +994,7 @@ contract ERC20VaultTest is Test {
         );
         uint256 debtValue = vault.getLoanValue(debtAmount);
 
-        uint256 x = (collateralValue * 1 * effectiveLtvRatio) / 100;
+        uint256 x = (collateralValue * 1 * effectiveLtvRatio) / DENOMINATOR;
         uint256 y = (debtValue * (1000 - (1000 / (leverage + 1)))) / 1000;
 
         uint256 healthEq = (x * 1e18) / y;
@@ -1014,7 +1016,7 @@ contract ERC20VaultTest is Test {
         vault.setDoNotMint(true);
 
         uint256 collateralAmount = 1000 ether;
-        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / 100; // % LTV
+        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / DENOMINATOR; // % LTV
 
         WETH.approve(address(vault), 1000 ether);
         vault.openPosition(
@@ -1030,7 +1032,7 @@ contract ERC20VaultTest is Test {
         uint256 collateralValue = vault.getCollateralValue(collateralAmount);
         uint256 debtValue = vault.getLoanValue(debtAmount);
 
-        uint256 x = (collateralValue * 1 * effectiveLtvRatio) / 100;
+        uint256 x = (collateralValue * 1 * effectiveLtvRatio) / DENOMINATOR;
         uint256 y = (debtValue * (1000 - (1000 / (leverage + 1)))) / 1000;
 
         uint256 healthEq = (x * 1e18) / y;
@@ -1053,7 +1055,7 @@ contract ERC20VaultTest is Test {
         vm.startPrank(user1);
 
         uint256 collateralAmount = 1000 ether;
-        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / 100; // % LTV
+        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / DENOMINATOR; // % LTV
 
         WETH.approve(address(vault), collateralAmount);
         vault.openPosition(
@@ -1073,7 +1075,7 @@ contract ERC20VaultTest is Test {
         );
         uint256 debtValue = vault.getLoanValue(debtAmount);
 
-        uint256 x = (collateralValue * 1 * effectiveLtvRatio) / 100;
+        uint256 x = (collateralValue * 1 * effectiveLtvRatio) / DENOMINATOR;
         uint256 y = (debtValue * (1000 - (1000 / (leverage + 1)))) / 1000;
 
         uint256 healthEq = (x * 1e18) / y;
@@ -1214,7 +1216,8 @@ contract ERC20VaultTest is Test {
             address(wethPriceFeed),
             address(shezUSDPriceFeed),
             treasury,
-            address(0)
+            address(0),
+            PENALTY_RATE
         );
 
         vm.expectRevert(ERC20Vault.InvalidLoanToken.selector);
@@ -1227,7 +1230,8 @@ contract ERC20VaultTest is Test {
             address(wethPriceFeed),
             address(shezUSDPriceFeed),
             treasury,
-            address(0)
+            address(0),
+            PENALTY_RATE
         );
 
         vm.expectRevert(ERC20Vault.InvalidCollateralPriceFeed.selector);
@@ -1240,7 +1244,8 @@ contract ERC20VaultTest is Test {
             address(0),
             address(shezUSDPriceFeed),
             treasury,
-            address(0)
+            address(0),
+            PENALTY_RATE
         );
 
         vm.expectRevert(ERC20Vault.InvalidLoanPriceFeed.selector);
@@ -1253,7 +1258,8 @@ contract ERC20VaultTest is Test {
             address(wethPriceFeed),
             address(0),
             treasury,
-            address(0)
+            address(0),
+            PENALTY_RATE
         );
         vm.stopPrank();
     }
@@ -1326,7 +1332,7 @@ contract ERC20VaultTest is Test {
         vault.updateLtvRatio(0);
 
         vm.expectRevert(ERC20Vault.InvalidLTVRatio.selector);
-        vault.updateLtvRatio(101);
+        vault.updateLtvRatio(10001);
         vm.stopPrank();
     }
 
@@ -2677,7 +2683,7 @@ contract ERC20VaultTest is Test {
         vm.startPrank(user1);
 
         uint256 collateralAmount = 1000 ether; // $200,000 worth
-        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / 100; // % LTV
+        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / DENOMINATOR; // % LTV
 
         WETH.approve(address(vault), collateralAmount);
         vault.openPosition(

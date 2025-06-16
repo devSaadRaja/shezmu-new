@@ -56,7 +56,7 @@ contract ERC20VaultInvariantTest is Test {
 
     InterestCollector interestCollector;
 
-    uint256 constant INITIAL_LTV = 50;
+    uint256 constant INITIAL_LTV = 5000;
     uint256 constant LIQUIDATION_THRESHOLD = 90; // 90% of INITIAL_LTV
     uint256 constant LIQUIDATOR_REWARD = 50; // 50%
     uint256 constant INTEREST_RATE = 500; // 5% annual interest in basis points
@@ -113,7 +113,8 @@ contract ERC20VaultInvariantTest is Test {
             address(wethPriceFeed),
             address(shezUSDPriceFeed),
             treasury,
-            address(aaveStrategy)
+            address(aaveStrategy),
+            10
         );
         interestCollector = new InterestCollector(treasury);
 
@@ -239,7 +240,7 @@ contract ERC20VaultInvariantTest is Test {
             uint256 adjustedCollateral = collateralAmount;
             if (!vault.getDoNotMint(user1)) {
                 uint256 fee = (collateralAmount * vault.soulBoundFeePercent()) /
-                    100;
+                    10000;
                 adjustedCollateral = collateralAmount - fee;
                 totalSoulBoundFees += fee;
             }
@@ -816,7 +817,7 @@ contract ERC20VaultInvariantTest is Test {
                 );
                 uint256 loanValue = vault.getLoanValue(debtAmount);
                 uint256 x = (collateralValue * leverage * effectiveLtvRatio) /
-                    100;
+                    10000;
                 uint256 y = (loanValue * (1000 - (1000 / (leverage + 1)))) /
                     1000;
 
@@ -855,7 +856,7 @@ contract ERC20VaultInvariantTest is Test {
                 );
                 uint256 loanValue = vault.getLoanValue(debtAmount);
                 uint256 x = (collateralValue * leverage * effectiveLtvRatio) /
-                    100;
+                    10000;
                 uint256 y = (loanValue * (1000 - (1000 / (leverage + 1)))) /
                     1000;
                 uint256 expectedHealth = (x * 1e18) / y;
@@ -868,7 +869,7 @@ contract ERC20VaultInvariantTest is Test {
                 );
 
                 // Check withdrawal revert when health is insufficient
-                uint256 minCollateralValue = (loanValue * 100) / INITIAL_LTV;
+                uint256 minCollateralValue = (loanValue * 10000) / INITIAL_LTV;
                 if (collateralValue <= minCollateralValue) {
                     vm.expectRevert();
                     vault.withdrawCollateral(positionId, 1); // Attempt to withdraw 1 wei

@@ -227,7 +227,8 @@ contract ERC20VaultInvariantTest is Test {
             address(wethPriceFeed),
             address(shezUSDPriceFeed),
             treasury,
-            address(0)
+            address(0),
+            10
         );
 
         WETH.transfer(user1, 2_000_000 ether);

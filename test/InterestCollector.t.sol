@@ -65,7 +65,8 @@ contract InterestCollectorTest is Test {
             address(wethPriceFeed),
             address(shezUSDPriceFeed),
             treasury,
-            address(0)
+            address(0),
+            10
         );
         vault.setInterestCollector(address(interestCollector));
         vault.toggleInterestCollection(true);
