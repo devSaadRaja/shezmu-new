@@ -19,7 +19,6 @@ import {LiquidityAmounts} from "v4-core/test/utils/LiquidityAmounts.sol";
 
 import {ERC20Vault} from "../src/ERC20Vault.sol";
 import {InterestCollector} from "../src/InterestCollector.sol";
-import {LeverageBooster} from "../src/LeverageBooster.sol";
 import {AaveStrategy} from "../src/strategies/AaveStrategy.sol";
 import {MockERC20} from "../src/mock/MockERC20.sol";
 import {MockERC20Mintable} from "../src/mock/MockERC20Mintable.sol";
@@ -64,7 +63,6 @@ contract DeployScript is Script {
     MockERC20Mintable public shezUSD;
     MockPriceFeed public wethPriceFeed;
     MockPriceFeed public shezUSDPriceFeed;
-    LeverageBooster public leverageBooster;
     PoolKey public pool;
 
     // address constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2; // Mainnet address
@@ -98,13 +96,6 @@ contract DeployScript is Script {
             address(0)
         );
 
-        leverageBooster = new LeverageBooster(
-            "",
-            address(vault),
-            address(PERMIT2),
-            address(SWAP_ROUTER)
-        );
-
         interestCollector = new InterestCollector(treasury);
 
         // Setup permissions and configurations
@@ -117,15 +108,12 @@ contract DeployScript is Script {
         shezUSD.grantRole(keccak256("MINTER_ROLE"), address(vault));
         shezUSD.grantRole(keccak256("BURNER_ROLE"), address(vault));
 
-        vault.grantRole(keccak256("LEVERAGE_ROLE"), address(leverageBooster));
-
         vm.stopBroadcast();
 
         console.log();
         console.log("Deployed contracts:");
         console.log("ERC20Vault:", address(vault));
         console.log("InterestCollector:", address(interestCollector));
-        console.log("LeverageBooster:", address(leverageBooster));
         console.log("WETH:", address(WETH));
         console.log("ShezUSD:", address(shezUSD));
         console.log("WETH PriceFeed:", address(wethPriceFeed));
@@ -172,20 +160,6 @@ contract DeployScript is Script {
 
         vm.startBroadcast(privateKeyDeployer);
         WETHPriceFeed.setPrice(int256(1 * 10 ** 8)); // $1
-        vm.stopBroadcast();
-    }
-
-    function poolAndLiquidity() external {
-        _poolAndLiquidity();
-
-        // ! update with deployed address before running
-        leverageBooster = LeverageBooster(
-            0x4f86a458064870Aa69336b6421930B169Ca21270
-        );
-
-        bytes memory encodedKey = abi.encode(pool);
-        vm.startBroadcast(privateKeyDeployer); // DEPLOYER
-        leverageBooster.setPool(encodedKey);
         vm.stopBroadcast();
     }
 
