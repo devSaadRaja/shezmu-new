@@ -123,6 +123,7 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
     error NoPositionsToLiquidate();
     error InvalidLeverage();
     error MaxDebtReached();
+    error StalePrice();
 
     // ================================================= //
     // ================== CONSTRUCTOR ================== //
@@ -420,8 +421,6 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
 
         _deletePosition(positionId, positionOwner);
 
-        loanToken.burn(positionOwner, debtAmount);
-
         emit PositionLiquidated(positionId, msg.sender, reward, debtAmount);
     }
 
@@ -471,8 +470,6 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
                     remainingCollateral
                 );
             }
-
-            loanToken.burn(positionOwner, debtAmount);
 
             _deletePosition(positionId, positionOwner);
         }
@@ -858,8 +855,10 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
     /// @param priceFeed The price feed to query
     /// @return The normalized price with 18 decimals
     function _getPrice(IPriceFeed priceFeed) internal view returns (uint256) {
-        (, int256 price, , , ) = priceFeed.latestRoundData();
+        (, int256 price, , uint256 updatedAt, ) = priceFeed.latestRoundData();
         if (price <= 0) revert InvalidPrice();
+        if (block.timestamp - updatedAt > 1 hours) revert StalePrice();
+
         return uint256(price) * 10 ** (18 - priceFeed.decimals());
     }
 }
