@@ -31,6 +31,7 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         uint256 effectiveLtvRatio;
         bool interestOptOut;
         uint256 leverage;
+        uint256 maxDebt;
     }
 
     bytes32 public constant LEVERAGE_ROLE = keccak256("LEVERAGE_ROLE");
@@ -224,7 +225,8 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
             block.number,
             effectiveLtvRatio,
             interestOptOut[owner],
-            leverage
+            leverage,
+            maxDebt
         );
         userPositionIds[owner].push(positionId);
 
@@ -600,15 +602,7 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
     function getMaxBorrowable(
         uint256 positionId
     ) external view returns (uint256) {
-        (, , uint256 maxLoan, ) = _estimateTotalDebt(
-            positions[positionId].owner,
-            positions[positionId].collateralAmount,
-            positions[positionId].leverage,
-            positions[positionId].effectiveLtvRatio,
-            false
-        );
-
-        return maxLoan;
+        return positions[positionId].maxDebt;
     }
 
     /// @notice Gets all position IDs owned by a user
@@ -650,9 +644,12 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         uint256 collateralValue = getCollateralValue(pos.collateralAmount);
         uint256 debtValue = getLoanValue(pos.debtAmount);
 
-        uint256 x = (collateralValue * pos.leverage * pos.effectiveLtvRatio) /
-            BIPS_HUNDRED;
-        uint256 y = (debtValue * (1000 - (1000 / (pos.leverage + 1)))) / 1000;
+        uint256 leverageUsed = (pos.debtAmount * pos.leverage * 1e27) /
+            pos.maxDebt;
+        uint256 x = (collateralValue * leverageUsed * pos.effectiveLtvRatio) /
+            (BIPS_HUNDRED * 1e27);
+        uint256 y = (debtValue *
+            (1000 - ((1000 * 1e27) / (leverageUsed + 1e27)))) / 1000;
 
         return (x * PRECISION) / y;
     }
@@ -734,14 +731,7 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
 
         _collectInterestIfAvailable(positionId);
 
-        (, , uint256 maxLoan, ) = _estimateTotalDebt(
-            onBehalfOf,
-            position.collateralAmount,
-            position.leverage,
-            position.effectiveLtvRatio,
-            false
-        );
-
+        uint256 maxLoan = position.maxDebt;
         uint256 newDebtAmount = position.debtAmount + amount;
         uint256 newLoanValue = getLoanValue(newDebtAmount);
         uint256 maxLoanValue = getLoanValue(maxLoan);

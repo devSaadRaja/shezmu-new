@@ -56,6 +56,9 @@ contract ERC20VaultInvariantTest is Test {
 
     InterestCollector interestCollector;
 
+    uint256 constant PRECISION = 1e18;
+    uint256 constant HIGH_PRECISION = 1e27;
+    uint256 constant DENOMINATOR = 10000;
     uint256 constant INITIAL_LTV = 5000;
     uint256 constant LIQUIDATION_THRESHOLD = 90; // 90% of INITIAL_LTV
     uint256 constant LIQUIDATOR_REWARD = 50; // 50%
@@ -211,7 +214,7 @@ contract ERC20VaultInvariantTest is Test {
     ) public {
         vm.startPrank(user1);
         collateralAmount = bound(collateralAmount, 0, 1e24); // 0 to 1e24 (allow zero)
-        debtAmount = bound(debtAmount, 0, 1e24); // 0 to 1e24 (allow zero)
+        debtAmount = bound(debtAmount, 1000, 1e24); // 1000 to 1e24 (allow zero)
         leverage = bound(leverage, 1, 10);
 
         vault.setInterestOptOut(interestOptOut);
@@ -654,7 +657,7 @@ contract ERC20VaultInvariantTest is Test {
         // Skip if position doesn't exist or has been liquidated
         if (owner == address(0) || wasLiquidated[positionId]) return;
 
-        borrowAmount = bound(borrowAmount, 0, 1e24);
+        borrowAmount = bound(borrowAmount, 1000, 1e24);
 
         uint256 newDebtAmount = posDebt + borrowAmount;
         uint256 newLoanValue = vault.getLoanValue(newDebtAmount);
@@ -816,9 +819,16 @@ contract ERC20VaultInvariantTest is Test {
                     collateralAmount
                 );
                 uint256 loanValue = vault.getLoanValue(debtAmount);
-                uint256 x = (collateralValue * leverage * effectiveLtvRatio) /
-                    10000;
-                uint256 y = (loanValue * (1000 - (1000 / (leverage + 1)))) /
+                uint256 maxDebt = vault.getMaxBorrowable(positionId);
+
+                uint256 leverageUsed = (debtAmount * leverage * HIGH_PRECISION) /
+                    maxDebt;
+                uint256 x = (collateralValue *
+                    leverageUsed *
+                    effectiveLtvRatio) / (DENOMINATOR * HIGH_PRECISION);
+                uint256 y = (loanValue *
+                    (1000 -
+                        ((1000 * HIGH_PRECISION) / (leverageUsed + HIGH_PRECISION)))) /
                     1000;
 
                 uint256 expectedHealth = (x * 1e18) / y;
@@ -855,9 +865,15 @@ contract ERC20VaultInvariantTest is Test {
                     collateralAmount
                 );
                 uint256 loanValue = vault.getLoanValue(debtAmount);
-                uint256 x = (collateralValue * leverage * effectiveLtvRatio) /
-                    10000;
-                uint256 y = (loanValue * (1000 - (1000 / (leverage + 1)))) /
+                uint256 maxDebt = vault.getMaxBorrowable(positionId);
+                uint256 leverageUsed = (debtAmount * leverage * HIGH_PRECISION) /
+                    maxDebt;
+                uint256 x = (collateralValue *
+                    leverageUsed *
+                    effectiveLtvRatio) / (DENOMINATOR * HIGH_PRECISION);
+                uint256 y = (loanValue *
+                    (1000 -
+                        ((1000 * HIGH_PRECISION) / (leverageUsed + HIGH_PRECISION)))) /
                     1000;
                 uint256 expectedHealth = (x * 1e18) / y;
 

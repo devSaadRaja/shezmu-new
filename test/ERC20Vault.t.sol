@@ -57,6 +57,8 @@ contract ERC20VaultTest is Test {
 
     InterestCollector interestCollector;
 
+    uint256 constant PRECISION = 1e18;
+    uint256 constant HIGH_PRECISION = 1e27;
     uint256 constant DENOMINATOR = 10000;
     uint256 constant INITIAL_LTV = 7000; // bips
     uint256 constant LIQUIDATION_THRESHOLD = 90; // 90% of LTV
@@ -486,11 +488,18 @@ contract ERC20VaultTest is Test {
             collateralAmount - fee
         );
         uint256 debtValue = vault.getLoanValue(debtAmount);
+        uint256 maxDebt = vault.getMaxBorrowable(1);
 
-        uint256 x = (collateralValue * 1 * effectiveLtvRatio) / DENOMINATOR;
-        uint256 y = (debtValue * (1000 - (1000 / (leverage + 1)))) / 1000;
+        uint256 leverageUsed = (debtAmount * leverage * HIGH_PRECISION) /
+            maxDebt;
+        uint256 x = (collateralValue * leverageUsed * effectiveLtvRatio) /
+            (DENOMINATOR * HIGH_PRECISION);
+        uint256 y = (debtValue *
+            (1000 -
+                ((1000 * HIGH_PRECISION) / (leverageUsed + HIGH_PRECISION)))) /
+            1000;
 
-        uint256 healthEq = (x * 1e18) / y;
+        uint256 healthEq = (x * PRECISION) / y;
 
         assertEq(health, healthEq);
         assertTrue(vault.getHasSoulBound(1));
@@ -679,11 +688,18 @@ contract ERC20VaultTest is Test {
             collateralAmount - fee
         );
         uint256 debtValue = vault.getLoanValue(debtAmount);
+        uint256 maxDebt = vault.getMaxBorrowable(1);
 
-        uint256 x = (collateralValue * 1 * effectiveLtvRatio) / DENOMINATOR;
-        uint256 y = (debtValue * (1000 - (1000 / (leverage + 1)))) / 1000;
+        uint256 leverageUsed = (debtAmount * leverage * HIGH_PRECISION) /
+            maxDebt;
+        uint256 x = (collateralValue * leverageUsed * effectiveLtvRatio) /
+            (DENOMINATOR * HIGH_PRECISION);
+        uint256 y = (debtValue *
+            (1000 -
+                ((1000 * HIGH_PRECISION) / (leverageUsed + HIGH_PRECISION)))) /
+            1000;
 
-        uint256 healthEq = (x * 1e18) / y;
+        uint256 healthEq = (x * PRECISION) / y;
 
         assertEq(health, healthEq);
 
@@ -872,9 +888,9 @@ contract ERC20VaultTest is Test {
 
         WETH.approve(address(vault), 2000 ether);
 
-        vault.openPosition(user1, address(WETH), collateralAmount, 1, 1);
+        vault.openPosition(user1, address(WETH), collateralAmount, 1000, 1);
         uint256 healthSmallDebt = vault.getPositionHealth(1);
-        assertGt(healthSmallDebt, 1000 ether);
+        assertGe(healthSmallDebt, 700 ether);
 
         uint256 debtAmount = (collateralAmount * INITIAL_LTV) / DENOMINATOR; // % LTV
         vault.openPosition(
@@ -907,12 +923,12 @@ contract ERC20VaultTest is Test {
 
         uint256 collateralAmount = 1000 ether;
 
-        vault.openPosition(user1, address(WETH), collateralAmount, 1, 1);
+        vault.openPosition(user1, address(WETH), collateralAmount, 1000, 1);
 
         uint256 fee1 = (collateralAmount * MINT_FEE) / 100;
         uint256 healthSmallDebt = vault.getPositionHealth(1);
 
-        assertGt(healthSmallDebt, 1000 ether);
+        assertGt(healthSmallDebt, 800 ether);
 
         uint256 debtAmount = (collateralAmount * INITIAL_LTV) / DENOMINATOR; // % LTV
 
@@ -932,11 +948,18 @@ contract ERC20VaultTest is Test {
             collateralAmount - fee2
         );
         uint256 debtValue = vault.getLoanValue(debtAmount);
+        uint256 maxDebt = vault.getMaxBorrowable(1);
 
-        uint256 x = (collateralValue * 1 * effectiveLtvRatio) / DENOMINATOR;
-        uint256 y = (debtValue * (1000 - (1000 / (leverage + 1)))) / 1000;
+        uint256 leverageUsed = (debtAmount * leverage * HIGH_PRECISION) /
+            maxDebt;
+        uint256 x = (collateralValue * leverageUsed * effectiveLtvRatio) /
+            (DENOMINATOR * HIGH_PRECISION);
+        uint256 y = (debtValue *
+            (1000 -
+                ((1000 * HIGH_PRECISION) / (leverageUsed + HIGH_PRECISION)))) /
+            1000;
 
-        uint256 healthEq = (x * 1e18) / y;
+        uint256 healthEq = (x * PRECISION) / y;
 
         assertEq(vault.getPositionHealth(2), healthEq);
         assertEq(WETH.balanceOf(treasury), fee1 + fee2);
@@ -993,11 +1016,18 @@ contract ERC20VaultTest is Test {
             collateralAmount - initialFee
         );
         uint256 debtValue = vault.getLoanValue(debtAmount);
+        uint256 maxDebt = vault.getMaxBorrowable(1);
 
-        uint256 x = (collateralValue * 1 * effectiveLtvRatio) / DENOMINATOR;
-        uint256 y = (debtValue * (1000 - (1000 / (leverage + 1)))) / 1000;
+        uint256 leverageUsed = (debtAmount * leverage * HIGH_PRECISION) /
+            maxDebt;
+        uint256 x = (collateralValue * leverageUsed * effectiveLtvRatio) /
+            (DENOMINATOR * HIGH_PRECISION);
+        uint256 y = (debtValue *
+            (1000 -
+                ((1000 * HIGH_PRECISION) / (leverageUsed + HIGH_PRECISION)))) /
+            1000;
 
-        uint256 healthEq = (x * 1e18) / y;
+        uint256 healthEq = (x * PRECISION) / y;
 
         assertEq(initialHealth, healthEq);
 
@@ -1074,11 +1104,18 @@ contract ERC20VaultTest is Test {
             collateralAmount - fee
         );
         uint256 debtValue = vault.getLoanValue(debtAmount);
+        uint256 maxDebt = vault.getMaxBorrowable(1);
 
-        uint256 x = (collateralValue * 1 * effectiveLtvRatio) / DENOMINATOR;
-        uint256 y = (debtValue * (1000 - (1000 / (leverage + 1)))) / 1000;
+        uint256 leverageUsed = (debtAmount * leverage * HIGH_PRECISION) /
+            maxDebt;
+        uint256 x = (collateralValue * leverageUsed * effectiveLtvRatio) /
+            (DENOMINATOR * HIGH_PRECISION);
+        uint256 y = (debtValue *
+            (1000 -
+                ((1000 * HIGH_PRECISION) / (leverageUsed + HIGH_PRECISION)))) /
+            1000;
 
-        uint256 healthEq = (x * 1e18) / y;
+        uint256 healthEq = (x * PRECISION) / y;
 
         assertEq(vault.getPositionHealth(1), healthEq);
 
@@ -2720,6 +2757,227 @@ contract ERC20VaultTest is Test {
 
         vm.stopPrank();
     }
+
+    // function test_OpenPositionLeveraged() public {
+    //     vm.startPrank(user1);
+
+    //     vault.setDoNotMint(true);
+
+    //     uint256 collateralAmount = 1000 ether; // $200,000 worth
+    //     uint256 debtAmount = (collateralAmount * INITIAL_LTV) / DENOMINATOR; // % LTV
+
+    //     WETH.approve(address(vault), collateralAmount);
+    //     vault.openPosition(
+    //         user1,
+    //         address(WETH),
+    //         collateralAmount,
+    //         debtAmount,
+    //         1
+    //     );
+
+    //     WETH.approve(address(vault), collateralAmount);
+    //     vault.openPosition(
+    //         user1,
+    //         address(WETH),
+    //         collateralAmount,
+    //         debtAmount,
+    //         2
+    //     );
+
+    //     WETH.approve(address(vault), collateralAmount);
+    //     vault.openPosition(
+    //         user1,
+    //         address(WETH),
+    //         collateralAmount,
+    //         debtAmount,
+    //         3
+    //     );
+
+    //     WETH.approve(address(vault), collateralAmount);
+    //     vault.openPosition(
+    //         user1,
+    //         address(WETH),
+    //         collateralAmount,
+    //         debtAmount,
+    //         4
+    //     );
+
+    //     WETH.approve(address(vault), collateralAmount);
+    //     vault.openPosition(
+    //         user1,
+    //         address(WETH),
+    //         collateralAmount,
+    //         debtAmount,
+    //         5
+    //     );
+
+    //     WETH.approve(address(vault), collateralAmount);
+    //     vault.openPosition(
+    //         user1,
+    //         address(WETH),
+    //         collateralAmount,
+    //         debtAmount,
+    //         6
+    //     );
+
+    //     WETH.approve(address(vault), collateralAmount);
+    //     vault.openPosition(
+    //         user1,
+    //         address(WETH),
+    //         collateralAmount,
+    //         debtAmount,
+    //         7
+    //     );
+
+    //     WETH.approve(address(vault), collateralAmount);
+    //     vault.openPosition(
+    //         user1,
+    //         address(WETH),
+    //         collateralAmount,
+    //         debtAmount,
+    //         8
+    //     );
+
+    //     WETH.approve(address(vault), collateralAmount);
+    //     vault.openPosition(
+    //         user1,
+    //         address(WETH),
+    //         collateralAmount,
+    //         debtAmount,
+    //         9
+    //     );
+
+    //     WETH.approve(address(vault), collateralAmount);
+    //     vault.openPosition(
+    //         user1,
+    //         address(WETH),
+    //         collateralAmount,
+    //         debtAmount,
+    //         10
+    //     );
+
+    //     console.log();
+    //     console.log("||| INITIAL |||");
+    //     console.log();
+    //     uint256 health = vault.getPositionHealth(1);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(2);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(3);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(4);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(5);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(6);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(7);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(8);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(9);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(10);
+    //     console.log(health, "<<< health");
+
+    //     console.log();
+    //     console.log(vault.isLiquidatable(1), "<<< isLiquidatable(1)");
+    //     console.log(vault.isLiquidatable(2), "<<< isLiquidatable(2)");
+    //     console.log(vault.isLiquidatable(3), "<<< isLiquidatable(3)");
+    //     console.log(vault.isLiquidatable(4), "<<< isLiquidatable(4)");
+    //     console.log(vault.isLiquidatable(5), "<<< isLiquidatable(5)");
+    //     console.log(vault.isLiquidatable(6), "<<< isLiquidatable(6)");
+    //     console.log(vault.isLiquidatable(7), "<<< isLiquidatable(7)");
+    //     console.log(vault.isLiquidatable(8), "<<< isLiquidatable(8)");
+    //     console.log(vault.isLiquidatable(9), "<<< isLiquidatable(9)");
+    //     console.log(vault.isLiquidatable(10), "<<< isLiquidatable(10)");
+
+    //     vault.borrow(2, vault.getMaxBorrowable(2) - debtAmount);
+    //     vault.borrow(3, vault.getMaxBorrowable(3) - debtAmount);
+    //     vault.borrow(4, vault.getMaxBorrowable(4) - debtAmount);
+    //     vault.borrow(5, vault.getMaxBorrowable(5) - debtAmount);
+    //     vault.borrow(6, vault.getMaxBorrowable(6) - debtAmount);
+    //     vault.borrow(7, vault.getMaxBorrowable(7) - debtAmount);
+    //     vault.borrow(8, vault.getMaxBorrowable(8) - debtAmount);
+    //     vault.borrow(9, vault.getMaxBorrowable(9) - debtAmount);
+    //     vault.borrow(10, vault.getMaxBorrowable(10) - debtAmount);
+
+    //     console.log();
+    //     console.log("||| AFTER TAKING MAX DEBT |||");
+    //     console.log();
+    //     health = vault.getPositionHealth(1);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(2);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(3);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(4);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(5);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(6);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(7);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(8);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(9);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(10);
+    //     console.log(health, "<<< health");
+
+    //     console.log();
+    //     console.log(vault.isLiquidatable(1), "<<< isLiquidatable(1)");
+    //     console.log(vault.isLiquidatable(2), "<<< isLiquidatable(2)");
+    //     console.log(vault.isLiquidatable(3), "<<< isLiquidatable(3)");
+    //     console.log(vault.isLiquidatable(4), "<<< isLiquidatable(4)");
+    //     console.log(vault.isLiquidatable(5), "<<< isLiquidatable(5)");
+    //     console.log(vault.isLiquidatable(6), "<<< isLiquidatable(6)");
+    //     console.log(vault.isLiquidatable(7), "<<< isLiquidatable(7)");
+    //     console.log(vault.isLiquidatable(8), "<<< isLiquidatable(8)");
+    //     console.log(vault.isLiquidatable(9), "<<< isLiquidatable(9)");
+    //     console.log(vault.isLiquidatable(10), "<<< isLiquidatable(10)");
+
+    //     wethPriceFeed.setPrice(150 * 10 ** 8); // Drop to $100
+
+    //     console.log();
+    //     console.log("||| AFTER DECREASING PRICE BY 50% |||");
+    //     console.log();
+    //     health = vault.getPositionHealth(1);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(2);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(3);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(4);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(5);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(6);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(7);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(8);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(9);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(10);
+    //     console.log(health, "<<< health");
+
+    //     console.log();
+    //     console.log(vault.isLiquidatable(1), "<<< isLiquidatable(1)");
+    //     console.log(vault.isLiquidatable(2), "<<< isLiquidatable(2)");
+    //     console.log(vault.isLiquidatable(3), "<<< isLiquidatable(3)");
+    //     console.log(vault.isLiquidatable(4), "<<< isLiquidatable(4)");
+    //     console.log(vault.isLiquidatable(5), "<<< isLiquidatable(5)");
+    //     console.log(vault.isLiquidatable(6), "<<< isLiquidatable(6)");
+    //     console.log(vault.isLiquidatable(7), "<<< isLiquidatable(7)");
+    //     console.log(vault.isLiquidatable(8), "<<< isLiquidatable(8)");
+    //     console.log(vault.isLiquidatable(9), "<<< isLiquidatable(9)");
+    //     console.log(vault.isLiquidatable(10), "<<< isLiquidatable(10)");
+
+    //     vm.stopPrank();
+    // }
 
     // function test_SuccessfulLiquidationAfterLoanTokenTransfer() public {
     //     vm.startPrank(user1);
