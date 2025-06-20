@@ -44,6 +44,8 @@ contract AaveStrategy is
     event Withdraw(uint256 indexed positionId, uint256 amount);
     event Withdrawal(address indexed token, uint256 amount);
     event InterestCollected(uint256 amount);
+    event SetUserUseReserveAsCollateral(address collateralToken, bool val);
+    event SetVault(address vault);
 
     // ============================================ //
     // ================== ERRORS ================== //
@@ -112,10 +114,11 @@ contract AaveStrategy is
         uint256 amount
     ) external nonReentrant onlyVault {
         if (amount == 0) revert ZeroAmount();
-        collateralToken.transferFrom(msg.sender, address(this), amount);
 
         totalCollateral += amount;
         amounts[positionId] += amount;
+
+        collateralToken.transferFrom(msg.sender, address(this), amount);
 
         collateralToken.approve(address(pool), amount);
         pool.supply(address(collateralToken), amount, address(this), 0);
@@ -133,11 +136,11 @@ contract AaveStrategy is
         if (amounts[positionId] == 0) revert InsufficientBalance();
         if (amount > amounts[positionId]) revert InsufficientBalance();
 
-        pool.withdraw(address(collateralToken), amount, address(this));
-        collateralToken.transfer(msg.sender, amount);
-
         totalCollateral -= amount;
         amounts[positionId] -= amount;
+
+        pool.withdraw(address(collateralToken), amount, address(this));
+        collateralToken.transfer(msg.sender, amount);
 
         emit Withdraw(positionId, amount);
     }
@@ -197,6 +200,7 @@ contract AaveStrategy is
         address _vault
     ) external onlyOwner onlyValidAddress(_vault) {
         vault = _vault;
+        emit SetVault(_vault);
     }
 
     /// @notice Updates the pool proxy contract address
@@ -221,6 +225,7 @@ contract AaveStrategy is
     /// @notice Sets no use for reserves as collateral
     function setUserUseReserveAsCollateral() external onlyOwner {
         pool.setUserUseReserveAsCollateral(address(collateralToken), false);
+        emit SetUserUseReserveAsCollateral(address(collateralToken), false);
     }
 
     // ====================================================== //

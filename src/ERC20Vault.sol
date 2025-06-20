@@ -99,6 +99,12 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         address liquidator,
         uint256 totalReward
     );
+    event SetDoNotMint(address user, bool status);
+    event SetInterestOptOut(address user, bool val);
+    event SetStrategy(address strategy);
+    event PriceFeedsUpdated(address collateralFeed, address loanFeed);
+    event SetLtvRatio(uint256 ltvRatio);
+    event EmergencyWithdrawl(address token, uint256 amount);
 
     // ============================================ //
     // ================== ERRORS ================== //
@@ -174,11 +180,13 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
     /// @param status The status to set for doNotMint (true = opt out, false = opt in)
     function setDoNotMint(bool status) external {
         doNotMint[msg.sender] = status;
+        emit SetDoNotMint(msg.sender, status);
     }
 
     /// @notice Sets if user want to opt in or out of interest deduction
     function setInterestOptOut(bool val) external {
         interestOptOut[msg.sender] = val;
+        emit SetInterestOptOut(msg.sender, val);
     }
 
     /// @notice Opens a new lending position
@@ -197,12 +205,6 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         }
         if (collateralAmount == 0) revert ZeroCollateralAmount();
         if (leverage < 1 || leverage > MAX_LEVERAGE) revert InvalidLeverage();
-
-        collateralToken.safeTransferFrom(
-            msg.sender,
-            address(this),
-            collateralAmount
-        );
 
         (
             uint256 fee,
@@ -238,6 +240,12 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         loanToken.mint(owner, debtAmount);
 
         interestCollector.setLastCollectionBlock(address(this), positionId);
+
+        collateralToken.safeTransferFrom(
+            msg.sender,
+            address(this),
+            collateralAmount
+        );
 
         Position storage pos = positions[positionId];
 
@@ -373,8 +381,6 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
             strategy.withdraw(positionId, amount);
         }
 
-        collateralToken.safeTransfer(msg.sender, amount);
-
         // If no collateral or debt remains, burn the soul-bound token and clean up
         if (
             positions[positionId].collateralAmount == 0 &&
@@ -382,6 +388,8 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         ) {
             _deletePosition(positionId, positions[positionId].owner);
         }
+
+        collateralToken.safeTransfer(msg.sender, amount);
 
         emit WithdrawnCollateral(positionId, amount);
     }
@@ -408,18 +416,18 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
             strategy.withdraw(positionId, collateralAmount);
         }
 
-        collateralToken.safeTransfer(treasury, penalty);
-        collateralToken.safeTransfer(msg.sender, reward);
-        if (remainingCollateral > 0) {
-            collateralToken.safeTransfer(positionOwner, remainingCollateral);
-        }
-
         collateralBalances[positionOwner] -= collateralAmount;
         loanBalances[positionOwner] -= debtAmount;
 
         totalDebt -= debtAmount;
 
         _deletePosition(positionId, positionOwner);
+
+        collateralToken.safeTransfer(treasury, penalty);
+        collateralToken.safeTransfer(msg.sender, reward);
+        if (remainingCollateral > 0) {
+            collateralToken.safeTransfer(positionOwner, remainingCollateral);
+        }
 
         emit PositionLiquidated(positionId, msg.sender, reward, debtAmount);
     }
@@ -464,14 +472,14 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
                 strategy.withdraw(positionId, collateralAmount);
             }
 
+            _deletePosition(positionId, positionOwner);
+
             if (remainingCollateral > 0) {
                 collateralToken.safeTransfer(
                     positionOwner,
                     remainingCollateral
                 );
             }
-
-            _deletePosition(positionId, positionOwner);
         }
 
         if (totalPenalty > 0)
@@ -498,6 +506,7 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         address _strategy
     ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         strategy = IStrategy(_strategy);
+        emit SetStrategy(_strategy);
     }
 
     /// @notice Updates the price feed addresses for both collateral and loan tokens
@@ -511,6 +520,8 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         if (_loanFeed == address(0)) revert InvalidLoanPriceFeed();
         collateralPriceFeed = IPriceFeed(_collateralFeed);
         loanPriceFeed = IPriceFeed(_loanFeed);
+
+        emit PriceFeedsUpdated(_collateralFeed, _loanFeed);
     }
 
     /// @notice Updates the loan-to-value ratio
@@ -522,6 +533,8 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
             revert InvalidLTVRatio();
         }
         ltvRatio = newLtvRatio;
+
+        emit SetLtvRatio(newLtvRatio);
     }
 
     /// @notice Emergency function to withdraw tokens from the contract
@@ -532,6 +545,7 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         uint256 amount
     ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         IERC20(token).safeTransfer(msg.sender, amount);
+        emit EmergencyWithdrawl(token, amount);
     }
 
     /// @notice Set the interest collector contract address
@@ -744,7 +758,7 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         emit Borrowed(positionId, amount);
     }
 
-    /// @notice Internal function to burn souldbound token if exists
+    /// @notice Internal function to burn soulbound token if exists
     /// @param positionId The ID of the position to burn token for
     function _deletePosition(uint256 positionId, address owner) internal {
         if (hasSoulBound[positionId]) {

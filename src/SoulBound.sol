@@ -44,6 +44,18 @@ contract SoulBound is ERC721 {
     // ================== PUBLIC FUNCTIONS ================== //
     // ====================================================== //
 
+    /// @notice Prevents approving of soul-bound tokens.
+    /// @dev Always reverts to enforce soulbound functionalities.
+    function approve(address, uint256) public pure override {
+        revert("Soul-bound tokens cannot be approved");
+    }
+
+    /// @notice Prevents approving of soul-bound tokens.
+    /// @dev Always reverts to enforce soulbound functionalities.
+    function setApprovalForAll(address, bool) public pure override {
+        revert("Soul-bound tokens cannot be approved");
+    }
+
     /// @notice Prevents transfer of soul-bound tokens.
     /// @dev Always reverts to enforce non-transferability.
     function transferFrom(address, address, uint256) public pure override {

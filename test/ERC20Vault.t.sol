@@ -1490,7 +1490,7 @@ contract ERC20VaultTest is Test {
         address liquidator = user2;
 
         uint256 liquidatorWETHBefore = WETH.balanceOf(liquidator);
-        uint256 userLoanBalanceBefore = shezUSD.balanceOf(user1);
+        // uint256 userLoanBalanceBefore = shezUSD.balanceOf(user1);
 
         vm.prank(liquidator);
         vault.liquidatePosition(positionId);

@@ -34,6 +34,8 @@ contract InterestCollector is ReentrancyGuard, Ownable2Step {
     // ================== EVENTS ================== //
     // ============================================ //
 
+    event PeriodBlocksUpdated(uint256 periodBlocks);
+    event SetLastCollectionBlock(uint256 blockNumber);
     event VaultRegistered(address indexed vault, uint256 interestRate);
     event InterestRateUpdated(address indexed vault, uint256 newInterestRate);
     event InterestCollected(
@@ -121,6 +123,7 @@ contract InterestCollector is ReentrancyGuard, Ownable2Step {
     ) external {
         if (msg.sender != vault) revert VaultNotCaller();
         lastCollectionBlock[vault][positionId] = block.number;
+        emit SetLastCollectionBlock(block.number);
     }
 
     /**
@@ -131,10 +134,10 @@ contract InterestCollector is ReentrancyGuard, Ownable2Step {
         uint256 amount = collectedInterest[token];
         if (amount == 0) revert NoInterestToCollect();
 
+        collectedInterest[token] = 0;
+
         bool success = IERC20(token).transfer(treasury, amount);
         if (!success) revert TransferFailed();
-
-        collectedInterest[token] = 0;
 
         emit InterestWithdrawn(token, amount, treasury);
     }
@@ -157,6 +160,7 @@ contract InterestCollector is ReentrancyGuard, Ownable2Step {
     function setPeriodBlocks(uint256 newPeriodBlocks) external onlyOwner {
         periodBlocks = newPeriodBlocks;
         periodShare = (periodBlocks * 1e18) / blocksPerYear; // Recalculate periodShare
+        emit PeriodBlocksUpdated(newPeriodBlocks);
     }
 
     /**
