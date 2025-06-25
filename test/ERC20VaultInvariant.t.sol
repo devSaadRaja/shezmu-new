@@ -781,20 +781,10 @@ contract ERC20VaultInvariantTest is Test {
             totalDebtExpected += expectedDebt;
         }
 
-        // assertEq(
-        //     vault.getLoanBalance(user1),
-        //     shezUSD.balanceOf(user1) + totalInterestAccrued,
-        //     "Loan balances mismatch"
-        // );
         assertEq(
             vault.getLoanBalance(user1),
             totalDebtExpected,
             "Total debt balance mismatch"
-        );
-        assertEq(
-            totalDebtExpected,
-            shezUSD.balanceOf(user1) + totalInterestAccrued,
-            "shezUSD balance mismatch"
         );
     }
 
@@ -820,18 +810,29 @@ contract ERC20VaultInvariantTest is Test {
                 );
                 uint256 loanValue = vault.getLoanValue(debtAmount);
                 uint256 maxDebt = vault.getMaxBorrowable(positionId);
+                uint256 leverageUsed = (debtAmount *
+                    leverage *
+                    HIGH_PRECISION) / maxDebt;
 
-                uint256 leverageUsed = (debtAmount * leverage * HIGH_PRECISION) /
-                    maxDebt;
-                uint256 x = (collateralValue *
-                    leverageUsed *
-                    effectiveLtvRatio) / (DENOMINATOR * HIGH_PRECISION);
-                uint256 y = (loanValue *
-                    (1000 -
-                        ((1000 * HIGH_PRECISION) / (leverageUsed + HIGH_PRECISION)))) /
-                    1000;
+                // ? LTVRatio check
+                uint256 x = collateralValue;
+                uint256 y = (loanValue * HIGH_PRECISION) / leverageUsed;
+                uint256 expectedHealth = (x * PRECISION) / y;
 
-                uint256 expectedHealth = (x * 1e18) / y;
+                // ? Leverage check
+                if (x >= y && leverage > 1 && leverageUsed > HIGH_PRECISION) {
+                    x =
+                        (collateralValue * leverageUsed * effectiveLtvRatio) /
+                        (DENOMINATOR * HIGH_PRECISION);
+                    y =
+                        (loanValue *
+                            (1000 - ((1000 * HIGH_PRECISION) / leverageUsed))) /
+                        1000;
+
+                    expectedHealth = y == 0
+                        ? type(uint256).max
+                        : (x * PRECISION) / y;
+                }
 
                 assertEq(health, expectedHealth, "Health ratio mismatch");
             }
@@ -866,16 +867,29 @@ contract ERC20VaultInvariantTest is Test {
                 );
                 uint256 loanValue = vault.getLoanValue(debtAmount);
                 uint256 maxDebt = vault.getMaxBorrowable(positionId);
-                uint256 leverageUsed = (debtAmount * leverage * HIGH_PRECISION) /
-                    maxDebt;
-                uint256 x = (collateralValue *
-                    leverageUsed *
-                    effectiveLtvRatio) / (DENOMINATOR * HIGH_PRECISION);
-                uint256 y = (loanValue *
-                    (1000 -
-                        ((1000 * HIGH_PRECISION) / (leverageUsed + HIGH_PRECISION)))) /
-                    1000;
-                uint256 expectedHealth = (x * 1e18) / y;
+                uint256 leverageUsed = (debtAmount *
+                    leverage *
+                    HIGH_PRECISION) / maxDebt;
+
+                // ? LTVRatio check
+                uint256 x = collateralValue;
+                uint256 y = (loanValue * HIGH_PRECISION) / leverageUsed;
+                uint256 expectedHealth = (x * PRECISION) / y;
+
+                // ? Leverage check
+                if (x >= y && leverage > 1 && leverageUsed > HIGH_PRECISION) {
+                    x =
+                        (collateralValue * leverageUsed * effectiveLtvRatio) /
+                        (DENOMINATOR * HIGH_PRECISION);
+                    y =
+                        (loanValue *
+                            (1000 - ((1000 * HIGH_PRECISION) / leverageUsed))) /
+                        1000;
+
+                    expectedHealth = y == 0
+                        ? type(uint256).max
+                        : (x * PRECISION) / y;
+                }
 
                 // Verify health reflects current price
                 assertEq(

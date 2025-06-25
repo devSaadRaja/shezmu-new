@@ -654,13 +654,22 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
 
         uint256 collateralValue = getCollateralValue(pos.collateralAmount);
         uint256 debtValue = getLoanValue(pos.debtAmount);
-
         uint256 leverageUsed = (pos.debtAmount * pos.leverage * 1e27) /
             pos.maxDebt;
-        uint256 x = (collateralValue * leverageUsed * pos.effectiveLtvRatio) /
-            (BIPS_HUNDRED * 1e27);
-        uint256 y = (debtValue *
-            (1000 - ((1000 * 1e27) / (leverageUsed + 1e27)))) / 1000;
+
+        // ? LTVRatio check
+        uint256 x = collateralValue;
+        uint256 y = (debtValue * 1e27) / leverageUsed;
+
+        // ? Leverage check
+        if (x >= y && pos.leverage > 1 && leverageUsed > 1e27) {
+            x =
+                (collateralValue * leverageUsed * pos.effectiveLtvRatio) /
+                (BIPS_HUNDRED * 1e27);
+            y = (debtValue * (1000 - ((1000 * 1e27) / leverageUsed))) / 1000;
+
+            if (y == 0) return type(uint256).max;
+        }
 
         return (x * PRECISION) / y;
     }
