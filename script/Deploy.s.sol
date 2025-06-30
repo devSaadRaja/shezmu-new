@@ -3,19 +3,19 @@ pragma solidity ^0.8.19;
 
 import "forge-std/Script.sol";
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IHooks} from "v4-core/src/interfaces/IHooks.sol";
-import {IPositionManager} from "../test/interfaces/IPositionManager.sol";
-import {IPoolManager} from "v4-core/src/interfaces/IPoolManager.sol";
-import {IUniversalRouter} from "../src/interfaces/IUniversalRouter.sol";
-import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
+// import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+// import {IHooks} from "v4-core/src/interfaces/IHooks.sol";
+// import {IPositionManager} from "../test/interfaces/IPositionManager.sol";
+// import {IPoolManager} from "v4-core/src/interfaces/IPoolManager.sol";
+// import {IUniversalRouter} from "../src/interfaces/IUniversalRouter.sol";
+// import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
-import {EasyPosm} from "../test/utils/EasyPosm.sol";
-import {PoolKey} from "v4-core/src/types/PoolKey.sol";
-import {Currency} from "v4-core/src/types/Currency.sol";
-import {TickMath} from "v4-core/src/libraries/TickMath.sol";
-import {StateLibrary} from "v4-core/src/libraries/StateLibrary.sol";
-import {LiquidityAmounts} from "v4-core/test/utils/LiquidityAmounts.sol";
+// import {EasyPosm} from "../test/utils/EasyPosm.sol";
+// import {PoolKey} from "v4-core/src/types/PoolKey.sol";
+// import {Currency} from "v4-core/src/types/Currency.sol";
+// import {TickMath} from "v4-core/src/libraries/TickMath.sol";
+// import {StateLibrary} from "v4-core/src/libraries/StateLibrary.sol";
+// import {LiquidityAmounts} from "v4-core/test/utils/LiquidityAmounts.sol";
 
 import {ERC20Vault} from "../src/ERC20Vault.sol";
 import {InterestCollector} from "../src/InterestCollector.sol";
@@ -24,25 +24,25 @@ import {MockERC20} from "../src/mock/MockERC20.sol";
 import {MockERC20Mintable} from "../src/mock/MockERC20Mintable.sol";
 import {MockPriceFeed} from "../src/mock/MockPriceFeed.sol";
 
-import {EERC20} from "../src/interfaces/EERC20.sol";
+import {IERC20, EERC20} from "../src/interfaces/EERC20.sol";
 import {IERC20Vault} from "../src/interfaces/IERC20Vault.sol";
 import {IPriceFeed} from "../src/interfaces/IPriceFeed.sol";
 import {IPool} from "../src/interfaces/aave-v3/IPool.sol";
 import {IRewardsController} from "../src/interfaces/aave-v3/IRewardsController.sol";
 
 contract DeployScript is Script {
-    using EasyPosm for IPositionManager;
-    using StateLibrary for IPoolManager;
+    // using EasyPosm for IPositionManager;
+    // using StateLibrary for IPoolManager;
 
-    //* BASE SEPOLIA ADDRESSES *//
-    IPoolManager POOL_MANAGER =
-        IPoolManager(0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408);
-    IPositionManager POSITION_MANAGER =
-        IPositionManager(payable(0x4B2C77d209D3405F41a037Ec6c77F7F5b8e2ca80));
-    IUniversalRouter SWAP_ROUTER =
-        IUniversalRouter(0x492E6456D9528771018DeB9E87ef7750EF184104);
-    IAllowanceTransfer PERMIT2 =
-        IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3);
+    // // BASE SEPOLIA ADDRESSES *//
+    // IPoolManager POOL_MANAGER =
+    //     IPoolManager(0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408);
+    // IPositionManager POSITION_MANAGER =
+    //     IPositionManager(payable(0x4B2C77d209D3405F41a037Ec6c77F7F5b8e2ca80));
+    // IUniversalRouter SWAP_ROUTER =
+    //     IUniversalRouter(0x492E6456D9528771018DeB9E87ef7750EF184104);
+    // IAllowanceTransfer PERMIT2 =
+    //     IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3);
 
     uint256 public privateKeyDeployer = vm.envUint("PRIVATE_KEY");
     address public deployer = vm.addr(privateKeyDeployer);
@@ -51,10 +51,10 @@ contract DeployScript is Script {
 
     address public treasury = deployer;
 
-    uint256 constant INITIAL_LTV = 50; // 50%
-    uint256 constant LIQUIDATION_THRESHOLD = 80; // 80%
-    uint256 constant LIQUIDATOR_REWARD = 5; // 5%
-    uint256 constant INTEREST_RATE = 10; // 10%
+    uint256 constant INITIAL_LTV = 7000; // 70%
+    uint256 constant LIQUIDATION_THRESHOLD = 90; // 90%
+    uint256 constant LIQUIDATOR_REWARD = 10; // 10%
+    uint256 constant INTEREST_RATE = 500; // 5%
 
     // Contract instances
     ERC20Vault public vault;
@@ -63,7 +63,7 @@ contract DeployScript is Script {
     MockERC20Mintable public shezUSD;
     MockPriceFeed public wethPriceFeed;
     MockPriceFeed public shezUSDPriceFeed;
-    PoolKey public pool;
+    // PoolKey public pool;
 
     // address constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2; // Mainnet address
     // address constant WETH = 0x4200000000000000000000000000000000000006; // base sepolia address
@@ -164,106 +164,111 @@ contract DeployScript is Script {
         vm.stopBroadcast();
     }
 
-    function _poolAndLiquidity() internal {
-        // ! update with deployed addresses before running
-        WETH = MockERC20(0xFB16868524d929Be22855F67217f155CD5B76A16);
-        shezUSD = MockERC20Mintable(0xcdA47692B7300ED3C6fa52a6DF52972d71Ee03f0);
+    // function _poolAndLiquidity() internal {
+    //     // ! update with deployed addresses before running
+    //     WETH = MockERC20(0xFB16868524d929Be22855F67217f155CD5B76A16);
+    //     shezUSD = MockERC20Mintable(0xcdA47692B7300ED3C6fa52a6DF52972d71Ee03f0);
 
-        vm.startBroadcast(privateKeyDeployer); // DEPLOYER
+    //     vm.startBroadcast(privateKeyDeployer); // DEPLOYER
 
-        /////////////////////////////////////
-        // --- Parameters to Configure --- //
-        /////////////////////////////////////
+    //     /////////////////////////////////////
+    //     // --- Parameters to Configure --- //
+    //     /////////////////////////////////////
 
-        // --- POOL Configuration --- //
+    //     // --- POOL Configuration --- //
 
-        uint24 lpFee = 3000;
-        int24 tickSpacing = 60;
-        uint160 startingPrice = 79228162514264337593543950336; // 1:1 | floor(sqrt(1) * 2^96)
+    //     uint24 lpFee = 3000;
+    //     int24 tickSpacing = 60;
+    //     uint160 startingPrice = 79228162514264337593543950336; // 1:1 | floor(sqrt(1) * 2^96)
 
-        // --- LIQUIDITY POSITION Configuration --- //
+    //     // --- LIQUIDITY POSITION Configuration --- //
 
-        uint256 token0Amount = 1_000_000 ether;
-        uint256 token1Amount = 1_000_000 ether;
+    //     uint256 token0Amount = 1_000_000 ether;
+    //     uint256 token1Amount = 1_000_000 ether;
 
-        int24 tickLower = -887220; //  -887260; // -600;
-        int24 tickUpper = 887220; //  887260; // 600;
+    //     int24 tickLower = -887220; //  -887260; // -600;
+    //     int24 tickUpper = 887220; //  887260; // 600;
 
-        ///////////////////////////
-        // --- CREATING POOL --- //
-        ///////////////////////////
+    //     ///////////////////////////
+    //     // --- CREATING POOL --- //
+    //     ///////////////////////////
 
-        (address currency0, address currency1) = address(WETH) <
-            address(shezUSD)
-            ? (address(WETH), address(shezUSD))
-            : (address(shezUSD), address(WETH));
+    //     (address currency0, address currency1) = address(WETH) <
+    //         address(shezUSD)
+    //         ? (address(WETH), address(shezUSD))
+    //         : (address(shezUSD), address(WETH));
 
-        pool = PoolKey({
-            currency0: Currency.wrap(currency0),
-            currency1: Currency.wrap(currency1),
-            fee: lpFee,
-            tickSpacing: tickSpacing,
-            hooks: IHooks(address(0))
-        });
-        IPoolManager(address(POOL_MANAGER)).initialize(pool, startingPrice);
+    //     pool = PoolKey({
+    //         currency0: Currency.wrap(currency0),
+    //         currency1: Currency.wrap(currency1),
+    //         fee: lpFee,
+    //         tickSpacing: tickSpacing,
+    //         hooks: IHooks(address(0))
+    //     });
+    //     IPoolManager(address(POOL_MANAGER)).initialize(pool, startingPrice);
 
-        //////////////////////////////
-        // --- ADDING LIQUIDITY --- //
-        //////////////////////////////
+    //     //////////////////////////////
+    //     // --- ADDING LIQUIDITY --- //
+    //     //////////////////////////////
 
-        (uint160 sqrtPriceX96, , , ) = IPoolManager(address(POOL_MANAGER))
-            .getSlot0(pool.toId());
+    //     (uint160 sqrtPriceX96, , , ) = IPoolManager(address(POOL_MANAGER))
+    //         .getSlot0(pool.toId());
 
-        // Converts token amounts to liquidity units
-        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
-            sqrtPriceX96,
-            TickMath.getSqrtPriceAtTick(tickLower),
-            TickMath.getSqrtPriceAtTick(tickUpper),
-            token0Amount,
-            token1Amount
-        );
+    //     // Converts token amounts to liquidity units
+    //     uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
+    //         sqrtPriceX96,
+    //         TickMath.getSqrtPriceAtTick(tickLower),
+    //         TickMath.getSqrtPriceAtTick(tickUpper),
+    //         token0Amount,
+    //         token1Amount
+    //     );
 
-        uint48 expiration = uint48(block.timestamp) + 60;
-        shezUSD.approve(address(PERMIT2), type(uint256).max);
-        PERMIT2.approve(
-            address(shezUSD),
-            address(POSITION_MANAGER),
-            type(uint160).max,
-            expiration
-        ); // type(uint48).max
-        WETH.approve(address(PERMIT2), type(uint256).max);
-        PERMIT2.approve(
-            address(WETH),
-            address(POSITION_MANAGER),
-            type(uint160).max,
-            expiration
-        ); // type(uint48).max
+    //     uint48 expiration = uint48(block.timestamp) + 60;
+    //     shezUSD.approve(address(PERMIT2), type(uint256).max);
+    //     PERMIT2.approve(
+    //         address(shezUSD),
+    //         address(POSITION_MANAGER),
+    //         type(uint160).max,
+    //         expiration
+    //     ); // type(uint48).max
+    //     WETH.approve(address(PERMIT2), type(uint256).max);
+    //     PERMIT2.approve(
+    //         address(WETH),
+    //         address(POSITION_MANAGER),
+    //         type(uint160).max,
+    //         expiration
+    //     ); // type(uint48).max
 
-        // slippage limits
-        uint256 amount0Max = token0Amount + 1000 wei;
-        uint256 amount1Max = token1Amount + 1000 wei;
+    //     // slippage limits
+    //     uint256 amount0Max = token0Amount + 1000 wei;
+    //     uint256 amount1Max = token1Amount + 1000 wei;
 
-        POSITION_MANAGER.mint(
-            pool,
-            tickLower,
-            tickUpper,
-            liquidity,
-            amount0Max,
-            amount1Max,
-            deployer,
-            expiration,
-            new bytes(0)
-        );
+    //     POSITION_MANAGER.mint(
+    //         pool,
+    //         tickLower,
+    //         tickUpper,
+    //         liquidity,
+    //         amount0Max,
+    //         amount1Max,
+    //         deployer,
+    //         expiration,
+    //         new bytes(0)
+    //     );
 
-        vm.stopBroadcast();
-    }
+    //     vm.stopBroadcast();
+    // }
 
     function deployStrategy() external {
-        // ! MAINNET ADDRESSES
+        // // MAINNET ADDRESSES
+        // IPool POOL_V3 = IPool(0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2);
+        // IRewardsController INCENTIVES_V3 = IRewardsController(
+        //     0x8164Cc65827dcFe994AB23944CBC90e0aa80bFcb
+        // );
 
-        IPool POOL_V3 = IPool(0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2);
+        // ETH-SEPOLIA ADDRESSES
+        IPool POOL_V3 = IPool(0x6Ae43d3271ff6888e7Fc43Fd7321a503ff738951);
         IRewardsController INCENTIVES_V3 = IRewardsController(
-            0x8164Cc65827dcFe994AB23944CBC90e0aa80bFcb
+            0x4DA5c4da71C5a167171cC839487536d86e083483
         );
 
         IERC20 collateralToken = IERC20(
