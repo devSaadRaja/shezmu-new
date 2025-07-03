@@ -662,14 +662,21 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         uint256 y = (debtValue * 1e27) / leverageUsed;
 
         // ? Leverage check
-        if (x >= y && pos.leverage > 1 && leverageUsed > 1e27) {
-            x =
-                (collateralValue * leverageUsed * pos.effectiveLtvRatio) /
-                (BIPS_HUNDRED * 1e27);
-            y = (debtValue * (1000 - ((1000 * 1e27) / leverageUsed))) / 1000;
-
-            if (y == 0) return type(uint256).max;
+        if (x >= y) {
+            if (pos.leverage > 1 && leverageUsed > 1e27) {
+                x =
+                    (collateralValue * leverageUsed * pos.effectiveLtvRatio) /
+                    (BIPS_HUNDRED * 1e27);
+                y =
+                    (debtValue * (1000 - ((1000 * 1e27) / leverageUsed))) /
+                    1000;
+            } else if (leverageUsed < 1e27) {
+                x = collateralValue;
+                y = (debtValue * leverageUsed) / 1e27;
+            }
         }
+
+        if (y == 0) return type(uint256).max;
 
         return (x * PRECISION) / y;
     }
@@ -733,6 +740,16 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
 
         positions[positionId].collateralAmount += amount;
         collateralBalances[onBehalfOf] += amount;
+
+        (, , uint256 maxDebt, ) = _estimateTotalDebt(
+            positions[positionId].owner,
+            positions[positionId].collateralAmount,
+            positions[positionId].leverage,
+            positions[positionId].effectiveLtvRatio,
+            false
+        );
+
+        positions[positionId].maxDebt = maxDebt;
 
         emit CollateralAdded(positionId, amount);
     }

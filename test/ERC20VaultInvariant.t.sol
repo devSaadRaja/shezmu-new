@@ -832,6 +832,12 @@ contract ERC20VaultInvariantTest is Test {
                     expectedHealth = y == 0
                         ? type(uint256).max
                         : (x * PRECISION) / y;
+                } else if (x >= y && leverageUsed < HIGH_PRECISION) {
+                    x = collateralValue;
+                    y = (loanValue * leverageUsed) / HIGH_PRECISION;
+                    expectedHealth = y == 0
+                        ? type(uint256).max
+                        : (x * PRECISION) / y;
                 }
 
                 assertEq(health, expectedHealth, "Health ratio mismatch");
@@ -889,7 +895,14 @@ contract ERC20VaultInvariantTest is Test {
                     expectedHealth = y == 0
                         ? type(uint256).max
                         : (x * PRECISION) / y;
+                } else if (x >= y && leverageUsed < HIGH_PRECISION) {
+                    x = collateralValue;
+                    y = (loanValue * leverageUsed) / HIGH_PRECISION;
+                    expectedHealth = y == 0
+                        ? type(uint256).max
+                        : (x * PRECISION) / y;
                 }
+
 
                 // Verify health reflects current price
                 assertEq(
