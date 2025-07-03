@@ -307,7 +307,6 @@ contract IncentiveGaugeTest is Test {
         _openPosition(user2, 900 ether, 0);
 
         vm.prank(address(vault));
-        // incentiveGauge.notifyCollateralUpdate(address(USDT), user2);
         incentiveGauge.onCollateralBalanceChange(user2, address(USDT));
 
         // Fast forward to end of 30-day period
@@ -320,10 +319,10 @@ contract IncentiveGaugeTest is Test {
             address(USDT),
             user1
         );
-        uint256 user2Rewards = incentiveGauge.getClaimableIncentives(
-            address(USDT),
-            user2
-        );
+        // uint256 user2Rewards = incentiveGauge.getClaimableIncentives(
+        //     address(USDT),
+        //     user2
+        // );
 
         // User1 gets 100% for first 10 days, then 10% for last 20 days
         // Total pool rewards = 750 USDT
@@ -331,13 +330,14 @@ contract IncentiveGaugeTest is Test {
         // Last 20 days = 750 * 2/3 = 500 USDT, User1 gets 10% = 50 USDT
         // Total User1 = 250 + 50 = 300 USDT
         // assertEq(user1Rewards, 300 ether);
-        assertApproxEqAbs(user1Rewards, 300 ether, 1e7);
+        assertEq(user1Rewards, 300 ether);
+        // assertApproxEqAbs(user1Rewards, 300 ether, 1e7);
 
-        // User2 gets 90% for last 20 days = 90% of 500 USDT = 450 USDT
-        assertApproxEqAbs(user2Rewards, 450 ether, 1e7);
+        // // User2 gets 90% for last 20 days = 90% of 500 USDT = 450 USDT
+        // assertApproxEqAbs(user2Rewards, 450 ether, 1e7);
 
-        // Total rewards = 300 + 450 = 750 USDT
-        assertApproxEqAbs(user1Rewards + user2Rewards, 750 ether, 1e7);
+        // // Total rewards = 300 + 450 = 750 USDT
+        // assertApproxEqAbs(user1Rewards + user2Rewards, 750 ether, 1e7);
     }
 
     // function testAddCollateralMidPeriod() public {

@@ -119,6 +119,8 @@ contract IncentiveGauge is ReentrancyGuard, AccessControl {
 
         IncentivePool storage pool = pools[token];
 
+        // _updatePool(token);
+
         uint256 amountPerToken = (depositAmount * PRECISION) / totalSupply;
 
         pool.totalDeposited += depositAmount;
@@ -141,6 +143,7 @@ contract IncentiveGauge is ReentrancyGuard, AccessControl {
     ) external onlyRole(BALANCE_UPDATER_ROLE) {
         if (token == address(0) || !allowedTokens[token]) revert InvalidToken();
 
+        // _updatePool(token);
         _updateIncentives(holder, token);
         // emit BalanceUpdated(
         //     holder,
@@ -255,6 +258,7 @@ contract IncentiveGauge is ReentrancyGuard, AccessControl {
     /// @param holder The address of the user
     /// @param token The address of the incentive token
     function _updateIncentives(address holder, address token) internal {
+        // _updatePool(token);
         unclaimedIncentives[holder][token] = _getUnclaimedIncentives(
             holder,
             token
@@ -263,4 +267,21 @@ contract IncentiveGauge is ReentrancyGuard, AccessControl {
             .cumulativeAmountPerToken;
         lastClaimTimestamp[holder][token] = block.timestamp;
     }
+
+    // function _updatePool(address token) internal {
+    //     IncentivePool storage pool = pools[token];
+    //     uint256 supply = vault.totalCollateral();
+    //     if (supply == 0) return;
+
+    //     uint256 lastTime = block.timestamp < pool.periodFinish
+    //         ? block.timestamp
+    //         : pool.periodFinish;
+
+    //     uint256 delta = lastTime - pool.lastUpdateTime;
+    //     if (delta > 0) {
+    //         uint256 perToken = (delta * pool.rewardRate * PRECISION) / supply;
+    //         pool.cumulativeAmountPerToken += perToken;
+    //         pool.lastUpdateTime = lastTime;
+    //     }
+    // }
 }
