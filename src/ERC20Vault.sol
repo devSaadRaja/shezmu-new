@@ -643,6 +643,105 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
     // ================== PUBLIC FUNCTIONS ================== //
     // ====================================================== //
 
+    /// @notice Simulates the position health after performing a specified action
+    /// @param action The type of action to simulate ("open", "borrow", "addCollateral", "repayDebt")
+    /// @param positionId The ID of the position (0 for new position)
+    /// @param collateralAmount The amount of collateral for the action (if applicable)
+    /// @param debtAmount The amount of debt for the action (if applicable)
+    /// @param leverage The leverage multiplier for opening a new position (if applicable)
+    /// @return The simulated health factor after the action
+    function simulatePositionHealth(
+        string memory action,
+        uint256 positionId,
+        uint256 collateralAmount,
+        uint256 debtAmount,
+        uint256 leverage
+    ) external view returns (uint256) {
+        bytes32 actionHash = keccak256(abi.encodePacked(action));
+        Position memory pos;
+
+        if (actionHash == keccak256("open")) {
+            if (collateralAmount == 0) revert ZeroCollateralAmount();
+            if (leverage < 1 || leverage > MAX_LEVERAGE) {
+                revert InvalidLeverage();
+            }
+
+            (
+                ,
+                uint256 adjustedCollateral,
+                uint256 maxDebt,
+                uint256 effectiveLtvRatio
+            ) = _estimateTotalDebt(
+                    msg.sender,
+                    collateralAmount,
+                    leverage,
+                    ltvRatio,
+                    true
+                );
+
+            if (debtAmount > maxDebt) revert MaxDebtReached();
+
+            pos = Position({
+                owner: msg.sender,
+                collateralAmount: adjustedCollateral,
+                debtAmount: debtAmount,
+                lastInterestCollectionBlock: block.number,
+                effectiveLtvRatio: effectiveLtvRatio,
+                interestOptOut: interestOptOut[msg.sender],
+                leverage: leverage,
+                maxDebt: maxDebt
+            });
+        } else {
+            pos = positions[positionId];
+            if (pos.owner == address(0)) revert InvalidPosition();
+
+            if (actionHash == keccak256("borrow")) {
+                if (debtAmount == 0) revert ZeroLoanAmount();
+                uint256 newDebtAmount = pos.debtAmount + debtAmount;
+                uint256 maxLoan = pos.maxDebt;
+                uint256 newLoanValue = getLoanValue(newDebtAmount);
+                uint256 maxLoanValue = getLoanValue(maxLoan);
+                if (newLoanValue > maxLoanValue) revert LoanExceedsLTVLimit();
+                pos.debtAmount = newDebtAmount;
+            } else if (actionHash == keccak256("addCollateral")) {
+                if (collateralAmount == 0) revert ZeroCollateralAmount();
+                pos.collateralAmount += collateralAmount;
+                (, , uint256 maxDebt, ) = _estimateTotalDebt(
+                    pos.owner,
+                    pos.collateralAmount,
+                    pos.leverage,
+                    pos.effectiveLtvRatio,
+                    false
+                );
+                pos.maxDebt = maxDebt;
+            } else if (actionHash == keccak256("repayDebt")) {
+                if (debtAmount == 0) revert ZeroLoanAmount();
+                if (pos.debtAmount < debtAmount) revert AmountExceedsLoan();
+                pos.debtAmount -= debtAmount;
+            } else if (actionHash == keccak256("withdrawCollateral")) {
+                if (collateralAmount == 0) revert ZeroCollateralAmount();
+                if (pos.collateralAmount < collateralAmount)
+                    revert InsufficientCollateral();
+                pos.collateralAmount -= collateralAmount;
+                if (pos.debtAmount > 0) {
+                    uint256 remainingCollateralValue = getCollateralValue(
+                        pos.collateralAmount
+                    );
+                    uint256 loanValue = getLoanValue(pos.debtAmount);
+                    uint256 minCollateralValue = (loanValue * BIPS_HUNDRED) /
+                        pos.effectiveLtvRatio;
+                    if (remainingCollateralValue < minCollateralValue) {
+                        revert InsufficientCollateralAfterWithdrawal();
+                    }
+                }
+            } else {
+                revert("Invalid action");
+            }
+        }
+
+        return _getPositionHealth(pos);
+    }
+
     /// @notice Calculates the health factor of a position
     /// @param positionId The ID of the position to check
     /// @return The health factor
@@ -650,35 +749,7 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         uint256 positionId
     ) public view returns (uint256) {
         Position memory pos = positions[positionId];
-        if (pos.debtAmount == 0) return type(uint256).max;
-
-        uint256 collateralValue = getCollateralValue(pos.collateralAmount);
-        uint256 debtValue = getLoanValue(pos.debtAmount);
-        uint256 leverageUsed = (pos.debtAmount * pos.leverage * 1e27) /
-            pos.maxDebt;
-
-        // ? LTVRatio check
-        uint256 x = collateralValue;
-        uint256 y = (debtValue * 1e27) / leverageUsed;
-
-        // ? Leverage check
-        if (x >= y) {
-            if (pos.leverage > 1 && leverageUsed > 1e27) {
-                x =
-                    (collateralValue * leverageUsed * pos.effectiveLtvRatio) /
-                    (BIPS_HUNDRED * 1e27);
-                y =
-                    (debtValue * (1000 - ((1000 * 1e27) / leverageUsed))) /
-                    1000;
-            } else if (leverageUsed < 1e27) {
-                x = collateralValue;
-                y = (debtValue * leverageUsed) / 1e27;
-            }
-        }
-
-        if (y == 0) return type(uint256).max;
-
-        return (x * PRECISION) / y;
+        return _getPositionHealth(pos);
     }
 
     /// @notice Calculates the USD value of a given amount of collateral
@@ -900,5 +971,40 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         if (block.timestamp - updatedAt > 1 hours) revert StalePrice();
 
         return uint256(price) * 10 ** (18 - priceFeed.decimals());
+    }
+
+    /// @dev Internal generic function to calculate the health factor of a position
+    /// @param pos The position struct to calculate health for
+    /// @return The health factor
+    function _getPositionHealth(
+        Position memory pos
+    ) internal view returns (uint256) {
+        if (pos.debtAmount == 0) return type(uint256).max;
+
+        uint256 collateralValue = getCollateralValue(pos.collateralAmount);
+        uint256 debtValue = getLoanValue(pos.debtAmount);
+        uint256 leverageUsed = (pos.debtAmount * pos.leverage * 1e27) /
+            pos.maxDebt;
+
+        uint256 x = collateralValue;
+        uint256 y = (debtValue * 1e27) / leverageUsed;
+
+        if (x >= y) {
+            if (pos.leverage > 1 && leverageUsed > 1e27) {
+                x =
+                    (collateralValue * leverageUsed * pos.effectiveLtvRatio) /
+                    (BIPS_HUNDRED * 1e27);
+                y =
+                    (debtValue * (1000 - ((1000 * 1e27) / leverageUsed))) /
+                    1000;
+            } else if (leverageUsed < 1e27) {
+                x = collateralValue;
+                y = (debtValue * leverageUsed) / 1e27;
+            }
+        }
+
+        if (y == 0) return type(uint256).max;
+
+        return (x * PRECISION) / y;
     }
 }

@@ -76,7 +76,7 @@ contract DeployScript is Script {
 
         // Deploy mock price feeds (for testing - replace with real price feeds for mainnet)
         wethPriceFeed = new MockPriceFeed(200 * 10 ** 8, 8); // $200
-        shezUSDPriceFeed = new MockPriceFeed(200 * 10 ** 8, 8); // $200
+        shezUSDPriceFeed = new MockPriceFeed(1 * 10 ** 8, 8); // $1
 
         // Deploy WETH (test) token
         WETH = new MockERC20("WETH", "WETH");
@@ -272,7 +272,7 @@ contract DeployScript is Script {
         );
 
         IERC20 collateralToken = IERC20(
-            0xdC035D45d973E3EC169d2276DDab16f1e407384F
+            0x5B984aaA085B418d810D9547e2b00EDC9FB092F1
         ); // USDS (USDS Stablecoin)
         IERC20 aToken = IERC20(0x32a6268f9Ba3642Dda7892aDd74f1D34469A4259); // aEthUSDS (Aave Ethereum USDS)
         IERC20 rewardToken = IERC20(0x32a6268f9Ba3642Dda7892aDd74f1D34469A4259); // aEthUSDS (Aave Ethereum USDS)
@@ -294,12 +294,14 @@ contract DeployScript is Script {
         console.log(deployer, "<<< deployer");
         console.log(address(aaveStrategy), "<<< address(aaveStrategy)");
 
-        aaveStrategy.setVault(deployer);
+        // aaveStrategy.setVault(deployer);
 
-        collateralToken.approve(address(aaveStrategy), 1000 ether);
-        aaveStrategy.deposit(0, 1000 ether);
+        // collateralToken.approve(address(aaveStrategy), 1000 ether);
+        // aaveStrategy.deposit(0, 1000 ether);
 
-        aaveStrategy.setUserUseReserveAsCollateral();
+        // aaveStrategy.setUserUseReserveAsCollateral();
+
+        // aaveStrategy.setVault(0x22f6b02Fe1542B722d10580FE85Acf027D2D7aB4); // vault
 
         vm.stopBroadcast();
     }
