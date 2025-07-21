@@ -34,6 +34,19 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         uint256 maxDebt;
     }
 
+    struct PositionView {
+        address owner;
+        uint256 collateralAmount;
+        uint256 debtAmount;
+        uint256 lastInterestCollectionBlock;
+        uint256 effectiveLtvRatio;
+        bool interestOptOut;
+        uint256 leverage;
+        uint256 maxDebt;
+        uint256 healthFactor;
+        bool hasSoulBound;
+    }
+
     bytes32 public constant LEVERAGE_ROLE = keccak256("LEVERAGE_ROLE");
     uint256 public constant PRECISION = 1e18; // For precise calculations
     uint256 public constant MAX_LEVERAGE = 10; // 10x
@@ -639,10 +652,6 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         return doNotMint[user];
     }
 
-    // ====================================================== //
-    // ================== PUBLIC FUNCTIONS ================== //
-    // ====================================================== //
-
     /// @notice Simulates the position health after performing a specified action
     /// @param action The type of action to simulate ("open", "borrow", "addCollateral", "repayDebt")
     /// @param positionId The ID of the position (0 for new position)
@@ -741,6 +750,43 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
 
         return _getPositionHealth(pos);
     }
+
+    /// @notice Returns an array of PositionView structs for a batch of position IDs.
+    /// @dev This function allows efficient retrieval of multiple position details in a single call.
+    /// @param positionIds The array of position IDs to query.
+    /// @return views An array of PositionView structs containing details for each requested position ID.
+    function getBatchPositionViews(
+        uint256[] calldata positionIds
+    ) external view returns (PositionView[] memory) {
+        PositionView[] memory views = new PositionView[](positionIds.length);
+        for (uint i = 0; i < positionIds.length; i++) {
+            uint256 positionId = positionIds[i];
+            Position storage pos = positions[positionId];
+
+            // This check prevents reverts for non-existent positions
+            if (pos.owner != address(0)) {
+                views[i] = PositionView({
+                    owner: pos.owner,
+                    collateralAmount: pos.collateralAmount,
+                    debtAmount: pos.debtAmount,
+                    lastInterestCollectionBlock: pos
+                        .lastInterestCollectionBlock,
+                    effectiveLtvRatio: pos.effectiveLtvRatio,
+                    interestOptOut: pos.interestOptOut,
+                    leverage: pos.leverage,
+                    maxDebt: pos.maxDebt,
+                    healthFactor: getPositionHealth(positionId),
+                    hasSoulBound: hasSoulBound[positionId]
+                });
+            }
+        }
+
+        return views;
+    }
+
+    // ====================================================== //
+    // ================== PUBLIC FUNCTIONS ================== //
+    // ====================================================== //
 
     /// @notice Calculates the health factor of a position
     /// @param positionId The ID of the position to check

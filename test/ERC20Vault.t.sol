@@ -17,6 +17,7 @@ import "../src/mock/MockPriceFeed.sol";
 import "../src/strategies/AaveStrategy.sol";
 
 import "../src/interfaces/IPriceFeed.sol";
+import "../src/interfaces/IERC20Vault.sol";
 
 contract ERC20VaultTest is Test {
     // =============================================== //
@@ -2881,428 +2882,460 @@ contract ERC20VaultTest is Test {
         vm.stopPrank();
     }
 
-    function test_OpenPositionLeveraged() public {
-        vm.startPrank(user1);
+    // function test_T() public {
+    //     // IERC20Vault vault2 = IERC20Vault(0x2C20AB8C69d2EA4728Dd8Bea73cf59eA0B88Cb45);
+    //     // console.log(vault2.getPositionHealth(1));
 
-        vault.setDoNotMint(true);
+    //     vm.prank(deployer);
+    //     shezUSDPriceFeed.setPrice(1e8);
 
-        uint256 collateralAmount = 1000 ether; // $200,000 worth
-        uint256 debtAmount = (collateralAmount * INITIAL_LTV) / DENOMINATOR; // % LTV
+    //     uint256 collateralValue = vault.getCollateralValue(980000000000000000);
+    //     uint256 debtValue = vault.getLoanValue(3000655659294405746);
+    //     uint256 leverageUsed = (3000655659294405746 * 1 * 1e27) /
+    //         uint256(162680000000000000000);
 
-        console.log();
-        console.log("||| INITIAL SIMULATED |||");
-        console.log();
-        console.log(
-            vault.simulatePositionHealth(
-                "open",
-                1,
-                collateralAmount,
-                debtAmount,
-                1
-            ),
-            "<<< simulatedHealth"
-        );
-        console.log(
-            vault.simulatePositionHealth(
-                "open",
-                2,
-                collateralAmount,
-                debtAmount,
-                2
-            ),
-            "<<< simulatedHealth"
-        );
-        console.log(
-            vault.simulatePositionHealth(
-                "open",
-                3,
-                collateralAmount,
-                debtAmount,
-                3
-            ),
-            "<<< simulatedHealth"
-        );
-        console.log(
-            vault.simulatePositionHealth(
-                "open",
-                4,
-                collateralAmount,
-                debtAmount,
-                4
-            ),
-            "<<< simulatedHealth"
-        );
-        console.log(
-            vault.simulatePositionHealth(
-                "open",
-                5,
-                collateralAmount,
-                debtAmount,
-                5
-            ),
-            "<<< simulatedHealth"
-        );
-        console.log(
-            vault.simulatePositionHealth(
-                "open",
-                6,
-                collateralAmount,
-                debtAmount,
-                6
-            ),
-            "<<< simulatedHealth"
-        );
-        console.log(
-            vault.simulatePositionHealth(
-                "open",
-                7,
-                collateralAmount,
-                debtAmount,
-                7
-            ),
-            "<<< simulatedHealth"
-        );
-        console.log(
-            vault.simulatePositionHealth(
-                "open",
-                8,
-                collateralAmount,
-                debtAmount,
-                8
-            ),
-            "<<< simulatedHealth"
-        );
-        console.log(
-            vault.simulatePositionHealth(
-                "open",
-                9,
-                collateralAmount,
-                debtAmount,
-                9
-            ),
-            "<<< simulatedHealth"
-        );
-        console.log(
-            vault.simulatePositionHealth(
-                "open",
-                10,
-                collateralAmount,
-                debtAmount,
-                10
-            ),
-            "<<< simulatedHealth"
-        );
+    //     uint256 x = collateralValue;
+    //     uint256 y = (debtValue * 1e27) / leverageUsed;
 
-        WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(
-            user1,
-            address(WETH),
-            collateralAmount,
-            debtAmount,
-            1
-        );
+    //     if (x >= y) {
+    //         if (1 > 1 && leverageUsed > 1e27) {
+    //             x = (collateralValue * leverageUsed * 8300) / (10000 * 1e27);
+    //             y =
+    //                 (debtValue * (1000 - ((1000 * 1e27) / leverageUsed))) /
+    //                 1000;
+    //         } else if (leverageUsed < 1e27) {
+    //             x = collateralValue;
+    //             y = (debtValue * leverageUsed) / 1e27;
+    //         }
+    //     }
 
-        WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(
-            user1,
-            address(WETH),
-            collateralAmount,
-            debtAmount,
-            2
-        );
+    //     if (y == 0) console.log(type(uint256).max);
 
-        WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(
-            user1,
-            address(WETH),
-            collateralAmount,
-            debtAmount,
-            3
-        );
+    //     console.log((x * PRECISION) / y);
+    // }
 
-        WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(
-            user1,
-            address(WETH),
-            collateralAmount,
-            debtAmount,
-            4
-        );
+    // function test_OpenPositionLeveraged() public {
+    //     vm.startPrank(user1);
 
-        WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(
-            user1,
-            address(WETH),
-            collateralAmount,
-            debtAmount,
-            5
-        );
+    //     vault.setDoNotMint(true);
 
-        WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(
-            user1,
-            address(WETH),
-            collateralAmount,
-            debtAmount,
-            6
-        );
+    //     uint256 collateralAmount = 1000 ether; // $200,000 worth
+    //     uint256 debtAmount = (collateralAmount * INITIAL_LTV) / DENOMINATOR; // % LTV
 
-        WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(
-            user1,
-            address(WETH),
-            collateralAmount,
-            debtAmount,
-            7
-        );
+    //     console.log();
+    //     console.log("||| INITIAL SIMULATED |||");
+    //     console.log();
+    //     console.log(
+    //         vault.simulatePositionHealth(
+    //             "open",
+    //             1,
+    //             collateralAmount,
+    //             debtAmount,
+    //             1
+    //         ),
+    //         "<<< simulatedHealth"
+    //     );
+    //     console.log(
+    //         vault.simulatePositionHealth(
+    //             "open",
+    //             2,
+    //             collateralAmount,
+    //             debtAmount,
+    //             2
+    //         ),
+    //         "<<< simulatedHealth"
+    //     );
+    //     console.log(
+    //         vault.simulatePositionHealth(
+    //             "open",
+    //             3,
+    //             collateralAmount,
+    //             debtAmount,
+    //             3
+    //         ),
+    //         "<<< simulatedHealth"
+    //     );
+    //     console.log(
+    //         vault.simulatePositionHealth(
+    //             "open",
+    //             4,
+    //             collateralAmount,
+    //             debtAmount,
+    //             4
+    //         ),
+    //         "<<< simulatedHealth"
+    //     );
+    //     console.log(
+    //         vault.simulatePositionHealth(
+    //             "open",
+    //             5,
+    //             collateralAmount,
+    //             debtAmount,
+    //             5
+    //         ),
+    //         "<<< simulatedHealth"
+    //     );
+    //     console.log(
+    //         vault.simulatePositionHealth(
+    //             "open",
+    //             6,
+    //             collateralAmount,
+    //             debtAmount,
+    //             6
+    //         ),
+    //         "<<< simulatedHealth"
+    //     );
+    //     console.log(
+    //         vault.simulatePositionHealth(
+    //             "open",
+    //             7,
+    //             collateralAmount,
+    //             debtAmount,
+    //             7
+    //         ),
+    //         "<<< simulatedHealth"
+    //     );
+    //     console.log(
+    //         vault.simulatePositionHealth(
+    //             "open",
+    //             8,
+    //             collateralAmount,
+    //             debtAmount,
+    //             8
+    //         ),
+    //         "<<< simulatedHealth"
+    //     );
+    //     console.log(
+    //         vault.simulatePositionHealth(
+    //             "open",
+    //             9,
+    //             collateralAmount,
+    //             debtAmount,
+    //             9
+    //         ),
+    //         "<<< simulatedHealth"
+    //     );
+    //     console.log(
+    //         vault.simulatePositionHealth(
+    //             "open",
+    //             10,
+    //             collateralAmount,
+    //             debtAmount,
+    //             10
+    //         ),
+    //         "<<< simulatedHealth"
+    //     );
 
-        WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(
-            user1,
-            address(WETH),
-            collateralAmount,
-            debtAmount,
-            8
-        );
+    //     WETH.approve(address(vault), collateralAmount);
+    //     vault.openPosition(
+    //         user1,
+    //         address(WETH),
+    //         collateralAmount,
+    //         debtAmount,
+    //         1
+    //     );
 
-        WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(
-            user1,
-            address(WETH),
-            collateralAmount,
-            debtAmount,
-            9
-        );
+    //     WETH.approve(address(vault), collateralAmount);
+    //     vault.openPosition(
+    //         user1,
+    //         address(WETH),
+    //         collateralAmount,
+    //         debtAmount,
+    //         2
+    //     );
 
-        WETH.approve(address(vault), collateralAmount);
-        vault.openPosition(
-            user1,
-            address(WETH),
-            collateralAmount,
-            debtAmount,
-            10
-        );
+    //     WETH.approve(address(vault), collateralAmount);
+    //     vault.openPosition(
+    //         user1,
+    //         address(WETH),
+    //         collateralAmount,
+    //         debtAmount,
+    //         3
+    //     );
 
-        console.log();
-        console.log("||| INITIAL |||");
-        console.log();
-        uint256 health = vault.getPositionHealth(1);
-        console.log(health, "<<< health");
-        health = vault.getPositionHealth(2);
-        console.log(health, "<<< health");
-        health = vault.getPositionHealth(3);
-        console.log(health, "<<< health");
-        health = vault.getPositionHealth(4);
-        console.log(health, "<<< health");
-        health = vault.getPositionHealth(5);
-        console.log(health, "<<< health");
-        health = vault.getPositionHealth(6);
-        console.log(health, "<<< health");
-        health = vault.getPositionHealth(7);
-        console.log(health, "<<< health");
-        health = vault.getPositionHealth(8);
-        console.log(health, "<<< health");
-        health = vault.getPositionHealth(9);
-        console.log(health, "<<< health");
-        health = vault.getPositionHealth(10);
-        console.log(health, "<<< health");
+    //     WETH.approve(address(vault), collateralAmount);
+    //     vault.openPosition(
+    //         user1,
+    //         address(WETH),
+    //         collateralAmount,
+    //         debtAmount,
+    //         4
+    //     );
 
-        console.log();
-        console.log(vault.isLiquidatable(1), "<<< isLiquidatable(1)");
-        console.log(vault.isLiquidatable(2), "<<< isLiquidatable(2)");
-        console.log(vault.isLiquidatable(3), "<<< isLiquidatable(3)");
-        console.log(vault.isLiquidatable(4), "<<< isLiquidatable(4)");
-        console.log(vault.isLiquidatable(5), "<<< isLiquidatable(5)");
-        console.log(vault.isLiquidatable(6), "<<< isLiquidatable(6)");
-        console.log(vault.isLiquidatable(7), "<<< isLiquidatable(7)");
-        console.log(vault.isLiquidatable(8), "<<< isLiquidatable(8)");
-        console.log(vault.isLiquidatable(9), "<<< isLiquidatable(9)");
-        console.log(vault.isLiquidatable(10), "<<< isLiquidatable(10)");
+    //     WETH.approve(address(vault), collateralAmount);
+    //     vault.openPosition(
+    //         user1,
+    //         address(WETH),
+    //         collateralAmount,
+    //         debtAmount,
+    //         5
+    //     );
 
-        console.log();
-        console.log("||| BEFORE BORROW |||");
-        console.log();
-        // console.log(
-        //     vault.simulatePositionHealth("borrow", 1, collateralAmount, 10, 1),
-        //     "<<< simulatedHealth"
-        // );
-        console.log(
-            vault.simulatePositionHealth(
-                "borrow",
-                2,
-                collateralAmount,
-                vault.getMaxBorrowable(2) - debtAmount,
-                2
-            ),
-            "<<< simulatedHealth"
-        );
-        console.log(
-            vault.simulatePositionHealth(
-                "borrow",
-                3,
-                collateralAmount,
-                vault.getMaxBorrowable(3) - debtAmount,
-                3
-            ),
-            "<<< simulatedHealth"
-        );
-        console.log(
-            vault.simulatePositionHealth(
-                "borrow",
-                4,
-                collateralAmount,
-                vault.getMaxBorrowable(4) - debtAmount,
-                4
-            ),
-            "<<< simulatedHealth"
-        );
-        console.log(
-            vault.simulatePositionHealth(
-                "borrow",
-                5,
-                collateralAmount,
-                vault.getMaxBorrowable(5) - debtAmount,
-                5
-            ),
-            "<<< simulatedHealth"
-        );
-        console.log(
-            vault.simulatePositionHealth(
-                "borrow",
-                6,
-                collateralAmount,
-                vault.getMaxBorrowable(6) - debtAmount,
-                6
-            ),
-            "<<< simulatedHealth"
-        );
-        console.log(
-            vault.simulatePositionHealth(
-                "borrow",
-                7,
-                collateralAmount,
-                vault.getMaxBorrowable(7) - debtAmount,
-                7
-            ),
-            "<<< simulatedHealth"
-        );
-        console.log(
-            vault.simulatePositionHealth(
-                "borrow",
-                8,
-                collateralAmount,
-                vault.getMaxBorrowable(8) - debtAmount,
-                8
-            ),
-            "<<< simulatedHealth"
-        );
-        console.log(
-            vault.simulatePositionHealth(
-                "borrow",
-                9,
-                collateralAmount,
-                vault.getMaxBorrowable(9) - debtAmount,
-                9
-            ),
-            "<<< simulatedHealth"
-        );
-        console.log(
-            vault.simulatePositionHealth(
-                "borrow",
-                10,
-                collateralAmount,
-                vault.getMaxBorrowable(10) - debtAmount,
-                10
-            ),
-            "<<< simulatedHealth"
-        );
+    //     WETH.approve(address(vault), collateralAmount);
+    //     vault.openPosition(
+    //         user1,
+    //         address(WETH),
+    //         collateralAmount,
+    //         debtAmount,
+    //         6
+    //     );
 
-        vault.borrow(2, vault.getMaxBorrowable(2) - debtAmount);
-        vault.borrow(3, vault.getMaxBorrowable(3) - debtAmount);
-        vault.borrow(4, vault.getMaxBorrowable(4) - debtAmount);
-        vault.borrow(5, vault.getMaxBorrowable(5) - debtAmount);
-        vault.borrow(6, vault.getMaxBorrowable(6) - debtAmount);
-        vault.borrow(7, vault.getMaxBorrowable(7) - debtAmount);
-        vault.borrow(8, vault.getMaxBorrowable(8) - debtAmount);
-        vault.borrow(9, vault.getMaxBorrowable(9) - debtAmount);
-        vault.borrow(10, vault.getMaxBorrowable(10) - debtAmount);
+    //     WETH.approve(address(vault), collateralAmount);
+    //     vault.openPosition(
+    //         user1,
+    //         address(WETH),
+    //         collateralAmount,
+    //         debtAmount,
+    //         7
+    //     );
 
-        console.log();
-        console.log("||| AFTER TAKING MAX DEBT |||");
-        console.log();
-        health = vault.getPositionHealth(1);
-        console.log(health, "<<< health");
-        health = vault.getPositionHealth(2);
-        console.log(health, "<<< health");
-        health = vault.getPositionHealth(3);
-        console.log(health, "<<< health");
-        health = vault.getPositionHealth(4);
-        console.log(health, "<<< health");
-        health = vault.getPositionHealth(5);
-        console.log(health, "<<< health");
-        health = vault.getPositionHealth(6);
-        console.log(health, "<<< health");
-        health = vault.getPositionHealth(7);
-        console.log(health, "<<< health");
-        health = vault.getPositionHealth(8);
-        console.log(health, "<<< health");
-        health = vault.getPositionHealth(9);
-        console.log(health, "<<< health");
-        health = vault.getPositionHealth(10);
-        console.log(health, "<<< health");
+    //     WETH.approve(address(vault), collateralAmount);
+    //     vault.openPosition(
+    //         user1,
+    //         address(WETH),
+    //         collateralAmount,
+    //         debtAmount,
+    //         8
+    //     );
 
-        console.log();
-        console.log(vault.isLiquidatable(1), "<<< isLiquidatable(1)");
-        console.log(vault.isLiquidatable(2), "<<< isLiquidatable(2)");
-        console.log(vault.isLiquidatable(3), "<<< isLiquidatable(3)");
-        console.log(vault.isLiquidatable(4), "<<< isLiquidatable(4)");
-        console.log(vault.isLiquidatable(5), "<<< isLiquidatable(5)");
-        console.log(vault.isLiquidatable(6), "<<< isLiquidatable(6)");
-        console.log(vault.isLiquidatable(7), "<<< isLiquidatable(7)");
-        console.log(vault.isLiquidatable(8), "<<< isLiquidatable(8)");
-        console.log(vault.isLiquidatable(9), "<<< isLiquidatable(9)");
-        console.log(vault.isLiquidatable(10), "<<< isLiquidatable(10)");
+    //     WETH.approve(address(vault), collateralAmount);
+    //     vault.openPosition(
+    //         user1,
+    //         address(WETH),
+    //         collateralAmount,
+    //         debtAmount,
+    //         9
+    //     );
 
-        wethPriceFeed.setPrice(100 * 10 ** 8);
+    //     WETH.approve(address(vault), collateralAmount);
+    //     vault.openPosition(
+    //         user1,
+    //         address(WETH),
+    //         collateralAmount,
+    //         debtAmount,
+    //         10
+    //     );
 
-        console.log();
-        console.log("||| AFTER DECREASING PRICE BY 50% |||");
-        console.log();
-        health = vault.getPositionHealth(1);
-        console.log(health, "<<< health - 1");
-        health = vault.getPositionHealth(2);
-        console.log(health, "<<< health - 2");
-        health = vault.getPositionHealth(3);
-        console.log(health, "<<< health - 3");
-        health = vault.getPositionHealth(4);
-        console.log(health, "<<< health - 4");
-        health = vault.getPositionHealth(5);
-        console.log(health, "<<< health - 5");
-        health = vault.getPositionHealth(6);
-        console.log(health, "<<< health - 6");
-        health = vault.getPositionHealth(7);
-        console.log(health, "<<< health - 7");
-        health = vault.getPositionHealth(8);
-        console.log(health, "<<< health - 8");
-        health = vault.getPositionHealth(9);
-        console.log(health, "<<< health - 9");
-        health = vault.getPositionHealth(10);
-        console.log(health, "<<< health - 10");
+    //     console.log();
+    //     console.log("||| INITIAL |||");
+    //     console.log();
+    //     uint256 health = vault.getPositionHealth(1);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(2);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(3);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(4);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(5);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(6);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(7);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(8);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(9);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(10);
+    //     console.log(health, "<<< health");
 
-        console.log();
-        console.log(vault.isLiquidatable(1), "<<< isLiquidatable(1)");
-        console.log(vault.isLiquidatable(2), "<<< isLiquidatable(2)");
-        console.log(vault.isLiquidatable(3), "<<< isLiquidatable(3)");
-        console.log(vault.isLiquidatable(4), "<<< isLiquidatable(4)");
-        console.log(vault.isLiquidatable(5), "<<< isLiquidatable(5)");
-        console.log(vault.isLiquidatable(6), "<<< isLiquidatable(6)");
-        console.log(vault.isLiquidatable(7), "<<< isLiquidatable(7)");
-        console.log(vault.isLiquidatable(8), "<<< isLiquidatable(8)");
-        console.log(vault.isLiquidatable(9), "<<< isLiquidatable(9)");
-        console.log(vault.isLiquidatable(10), "<<< isLiquidatable(10)");
+    //     console.log();
+    //     console.log(vault.isLiquidatable(1), "<<< isLiquidatable(1)");
+    //     console.log(vault.isLiquidatable(2), "<<< isLiquidatable(2)");
+    //     console.log(vault.isLiquidatable(3), "<<< isLiquidatable(3)");
+    //     console.log(vault.isLiquidatable(4), "<<< isLiquidatable(4)");
+    //     console.log(vault.isLiquidatable(5), "<<< isLiquidatable(5)");
+    //     console.log(vault.isLiquidatable(6), "<<< isLiquidatable(6)");
+    //     console.log(vault.isLiquidatable(7), "<<< isLiquidatable(7)");
+    //     console.log(vault.isLiquidatable(8), "<<< isLiquidatable(8)");
+    //     console.log(vault.isLiquidatable(9), "<<< isLiquidatable(9)");
+    //     console.log(vault.isLiquidatable(10), "<<< isLiquidatable(10)");
 
-        vm.stopPrank();
-    }
+    //     console.log();
+    //     console.log("||| BEFORE BORROW |||");
+    //     console.log();
+    //     // console.log(
+    //     //     vault.simulatePositionHealth("borrow", 1, collateralAmount, 10, 1),
+    //     //     "<<< simulatedHealth"
+    //     // );
+    //     console.log(
+    //         vault.simulatePositionHealth(
+    //             "borrow",
+    //             2,
+    //             collateralAmount,
+    //             vault.getMaxBorrowable(2) - debtAmount,
+    //             2
+    //         ),
+    //         "<<< simulatedHealth"
+    //     );
+    //     console.log(
+    //         vault.simulatePositionHealth(
+    //             "borrow",
+    //             3,
+    //             collateralAmount,
+    //             vault.getMaxBorrowable(3) - debtAmount,
+    //             3
+    //         ),
+    //         "<<< simulatedHealth"
+    //     );
+    //     console.log(
+    //         vault.simulatePositionHealth(
+    //             "borrow",
+    //             4,
+    //             collateralAmount,
+    //             vault.getMaxBorrowable(4) - debtAmount,
+    //             4
+    //         ),
+    //         "<<< simulatedHealth"
+    //     );
+    //     console.log(
+    //         vault.simulatePositionHealth(
+    //             "borrow",
+    //             5,
+    //             collateralAmount,
+    //             vault.getMaxBorrowable(5) - debtAmount,
+    //             5
+    //         ),
+    //         "<<< simulatedHealth"
+    //     );
+    //     console.log(
+    //         vault.simulatePositionHealth(
+    //             "borrow",
+    //             6,
+    //             collateralAmount,
+    //             vault.getMaxBorrowable(6) - debtAmount,
+    //             6
+    //         ),
+    //         "<<< simulatedHealth"
+    //     );
+    //     console.log(
+    //         vault.simulatePositionHealth(
+    //             "borrow",
+    //             7,
+    //             collateralAmount,
+    //             vault.getMaxBorrowable(7) - debtAmount,
+    //             7
+    //         ),
+    //         "<<< simulatedHealth"
+    //     );
+    //     console.log(
+    //         vault.simulatePositionHealth(
+    //             "borrow",
+    //             8,
+    //             collateralAmount,
+    //             vault.getMaxBorrowable(8) - debtAmount,
+    //             8
+    //         ),
+    //         "<<< simulatedHealth"
+    //     );
+    //     console.log(
+    //         vault.simulatePositionHealth(
+    //             "borrow",
+    //             9,
+    //             collateralAmount,
+    //             vault.getMaxBorrowable(9) - debtAmount,
+    //             9
+    //         ),
+    //         "<<< simulatedHealth"
+    //     );
+    //     console.log(
+    //         vault.simulatePositionHealth(
+    //             "borrow",
+    //             10,
+    //             collateralAmount,
+    //             vault.getMaxBorrowable(10) - debtAmount,
+    //             10
+    //         ),
+    //         "<<< simulatedHealth"
+    //     );
+
+    //     vault.borrow(2, vault.getMaxBorrowable(2) - debtAmount);
+    //     vault.borrow(3, vault.getMaxBorrowable(3) - debtAmount);
+    //     vault.borrow(4, vault.getMaxBorrowable(4) - debtAmount);
+    //     vault.borrow(5, vault.getMaxBorrowable(5) - debtAmount);
+    //     vault.borrow(6, vault.getMaxBorrowable(6) - debtAmount);
+    //     vault.borrow(7, vault.getMaxBorrowable(7) - debtAmount);
+    //     vault.borrow(8, vault.getMaxBorrowable(8) - debtAmount);
+    //     vault.borrow(9, vault.getMaxBorrowable(9) - debtAmount);
+    //     vault.borrow(10, vault.getMaxBorrowable(10) - debtAmount);
+
+    //     console.log();
+    //     console.log("||| AFTER TAKING MAX DEBT |||");
+    //     console.log();
+    //     health = vault.getPositionHealth(1);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(2);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(3);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(4);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(5);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(6);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(7);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(8);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(9);
+    //     console.log(health, "<<< health");
+    //     health = vault.getPositionHealth(10);
+    //     console.log(health, "<<< health");
+
+    //     console.log();
+    //     console.log(vault.isLiquidatable(1), "<<< isLiquidatable(1)");
+    //     console.log(vault.isLiquidatable(2), "<<< isLiquidatable(2)");
+    //     console.log(vault.isLiquidatable(3), "<<< isLiquidatable(3)");
+    //     console.log(vault.isLiquidatable(4), "<<< isLiquidatable(4)");
+    //     console.log(vault.isLiquidatable(5), "<<< isLiquidatable(5)");
+    //     console.log(vault.isLiquidatable(6), "<<< isLiquidatable(6)");
+    //     console.log(vault.isLiquidatable(7), "<<< isLiquidatable(7)");
+    //     console.log(vault.isLiquidatable(8), "<<< isLiquidatable(8)");
+    //     console.log(vault.isLiquidatable(9), "<<< isLiquidatable(9)");
+    //     console.log(vault.isLiquidatable(10), "<<< isLiquidatable(10)");
+
+    //     wethPriceFeed.setPrice(100 * 10 ** 8);
+
+    //     console.log();
+    //     console.log("||| AFTER DECREASING PRICE BY 50% |||");
+    //     console.log();
+    //     health = vault.getPositionHealth(1);
+    //     console.log(health, "<<< health - 1");
+    //     health = vault.getPositionHealth(2);
+    //     console.log(health, "<<< health - 2");
+    //     health = vault.getPositionHealth(3);
+    //     console.log(health, "<<< health - 3");
+    //     health = vault.getPositionHealth(4);
+    //     console.log(health, "<<< health - 4");
+    //     health = vault.getPositionHealth(5);
+    //     console.log(health, "<<< health - 5");
+    //     health = vault.getPositionHealth(6);
+    //     console.log(health, "<<< health - 6");
+    //     health = vault.getPositionHealth(7);
+    //     console.log(health, "<<< health - 7");
+    //     health = vault.getPositionHealth(8);
+    //     console.log(health, "<<< health - 8");
+    //     health = vault.getPositionHealth(9);
+    //     console.log(health, "<<< health - 9");
+    //     health = vault.getPositionHealth(10);
+    //     console.log(health, "<<< health - 10");
+
+    //     console.log();
+    //     console.log(vault.isLiquidatable(1), "<<< isLiquidatable(1)");
+    //     console.log(vault.isLiquidatable(2), "<<< isLiquidatable(2)");
+    //     console.log(vault.isLiquidatable(3), "<<< isLiquidatable(3)");
+    //     console.log(vault.isLiquidatable(4), "<<< isLiquidatable(4)");
+    //     console.log(vault.isLiquidatable(5), "<<< isLiquidatable(5)");
+    //     console.log(vault.isLiquidatable(6), "<<< isLiquidatable(6)");
+    //     console.log(vault.isLiquidatable(7), "<<< isLiquidatable(7)");
+    //     console.log(vault.isLiquidatable(8), "<<< isLiquidatable(8)");
+    //     console.log(vault.isLiquidatable(9), "<<< isLiquidatable(9)");
+    //     console.log(vault.isLiquidatable(10), "<<< isLiquidatable(10)");
+
+    //     vm.stopPrank();
+    // }
 
     // function test_OpenPositionLeveraged() public {
     //     vm.startPrank(user1);

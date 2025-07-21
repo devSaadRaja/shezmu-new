@@ -75,13 +75,13 @@ contract DeployScript is Script {
         vm.startBroadcast(privateKeyDeployer); // DEPLOYER
 
         // Deploy mock price feeds (for testing - replace with real price feeds for mainnet)
-        wethPriceFeed = new MockPriceFeed(200 * 10 ** 8, 8); // $200
-        shezUSDPriceFeed = new MockPriceFeed(1 * 10 ** 8, 8); // $1
+        wethPriceFeed = MockPriceFeed(0x5505DaE7a918520A797732d8F8936Eb485bEB101); // new MockPriceFeed(200 * 10 ** 8, 8); // $200
+        shezUSDPriceFeed = MockPriceFeed(0x41909cb1F5Be71C26A041dA1A612f544c5B0f4c5); // new MockPriceFeed(1 * 10 ** 8, 8); // $1
 
         // Deploy WETH (test) token
-        WETH = new MockERC20("WETH", "WETH");
+        WETH = MockERC20(0x5B984aaA085B418d810D9547e2b00EDC9FB092F1); // new MockERC20("WETH", "WETH");
         // Deploy shezUSD token
-        shezUSD = new MockERC20Mintable("Shez USD", "shezUSD");
+        shezUSD = MockERC20Mintable(0x2A4bEC7093DAA268695Dd584ee38e3A49aF30204); // new MockERC20Mintable("Shez USD", "shezUSD");
 
         // Deploy main contracts
         vault = new ERC20Vault(
@@ -97,14 +97,14 @@ contract DeployScript is Script {
             10
         );
 
-        interestCollector = new InterestCollector(treasury);
+        interestCollector = InterestCollector(0x239b5ded987a738D1bfDaD29782AC4cfC00442e7); // new InterestCollector(treasury);
 
         // Setup permissions and configurations
         vault.setInterestCollector(address(interestCollector));
         vault.toggleInterestCollection(true);
         interestCollector.registerVault(address(vault), INTEREST_RATE);
 
-        WETH.transfer(user1, 2_000_000 ether);
+        // WETH.transfer(user1, 2_000_000 ether);
 
         shezUSD.grantRole(keccak256("MINTER_ROLE"), address(vault));
         shezUSD.grantRole(keccak256("BURNER_ROLE"), address(vault));
