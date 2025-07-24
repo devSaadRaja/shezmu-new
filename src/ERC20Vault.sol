@@ -77,6 +77,8 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
     mapping(address => uint256) collateralBalances;
     mapping(address => uint256) loanBalances;
 
+    mapping(address => uint256) stalePeriod;
+
     uint256 public totalDebt;
     bool public interestCollectionEnabled;
     IInterestCollector public interestCollector;
@@ -118,6 +120,7 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
     event PriceFeedsUpdated(address collateralFeed, address loanFeed);
     event SetLtvRatio(uint256 ltvRatio);
     event EmergencyWithdrawl(address token, uint256 amount);
+    event SetStalePeriod(address priceFeed, uint256 period);
 
     // ============================================ //
     // ================== ERRORS ================== //
@@ -138,6 +141,7 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
     error InsufficientCollateral();
     error InsufficientCollateralAfterWithdrawal();
     error InvalidPrice();
+    error InvalidPriceFeed();
     error PositionNotLiquidatable();
     error NoPositionsToLiquidate();
     error InvalidLeverage();
@@ -181,6 +185,9 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         penaltyRate = _penalty;
 
         soulBoundToken = new SoulBound(address(this));
+
+        stalePeriod[_collateralPriceFeed] = 1 hours;
+        stalePeriod[_loanPriceFeed] = 1 hours;
 
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
@@ -579,6 +586,20 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
         emit InterestCollectionToggled(_enabled);
     }
 
+    /// @notice Sets the allowed staleness period for a price feed
+    /// @dev Only callable by admin. Used to prevent using outdated price data.
+    /// @param priceFeed The address of the price feed
+    /// @param period The allowed staleness period in seconds
+    function setStalePeriod(
+        address priceFeed,
+        uint256 period
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (priceFeed == address(0)) revert InvalidPriceFeed();
+        stalePeriod[priceFeed] = period;
+
+        emit SetStalePeriod(priceFeed, period);
+    }
+
     /// @notice Returns the position details for a given position ID
     /// @param positionId The ID of the position to query
     /// @return owner The address of the position owner
@@ -650,6 +671,13 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
     /// @return True if the user has opted out, false otherwise
     function getDoNotMint(address user) external view returns (bool) {
         return doNotMint[user];
+    }
+
+    /// @notice Returns the allowed staleness period for a given price feed address
+    /// @param priceFeed The address of the price feed
+    /// @return The allowed staleness period in seconds
+    function getStalePeriod(address priceFeed) external view returns (uint256) {
+        return stalePeriod[priceFeed];
     }
 
     /// @notice Simulates the position health after performing a specified action
@@ -1014,7 +1042,9 @@ contract ERC20Vault is ReentrancyGuard, AccessControl {
     function _getPrice(IPriceFeed priceFeed) internal view returns (uint256) {
         (, int256 price, , uint256 updatedAt, ) = priceFeed.latestRoundData();
         if (price <= 0) revert InvalidPrice();
-        if (block.timestamp - updatedAt > 1 hours) revert StalePrice();
+        if (block.timestamp - updatedAt > stalePeriod[address(priceFeed)]) {
+            revert StalePrice();
+        }
 
         return uint256(price) * 10 ** (18 - priceFeed.decimals());
     }
